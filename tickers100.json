@@ -1,0 +1,830 @@
+[
+  {
+    "Symbol": "ABL",
+    "Company Name": "Allied Bank Limited",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "ABOT",
+    "Company Name": "Abbott Laboratories (Pakistan) Limited",
+    "Industry": "Pharmaceuticals",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "AGP",
+    "Company Name": "AGP Limited",
+    "Industry": "Pharmaceuticals",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "AICL",
+    "Company Name": "Adamjee Insurance Company Limited",
+    "Industry": "Insurance",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "AKBL",
+    "Company Name": "Askari Bank Limited",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "APL",
+    "Company Name": "Attock Petroleum Limited",
+    "Industry": "OMC",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "ATRL",
+    "Company Name": "Attock Refinery Limited",
+    "Industry": "Refineries",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "AVN",
+    "Company Name": "Avanceon Limited",
+    "Industry": "Technology",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "BAFL",
+    "Company Name": "Bank Alfalah Limited",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "BAHL",
+    "Company Name": "Bank AL Habib Limited",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "BIPL",
+    "Company Name": "BankIslami Pakistan Limited",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "BNWM",
+    "Company Name": "Bannu Woollen Mills Limited",
+    "Industry": "Textile",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "BOP",
+    "Company Name": "The Bank of Punjab",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "BWCL",
+    "Company Name": "Bestway Cement Limited",
+    "Industry": "Cement",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "CEPB",
+    "Company Name": "Century Paper & Board Mills Limited",
+    "Industry": "Packaging",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "CHCC",
+    "Company Name": "Cherat Cement Company Limited",
+    "Industry": "Cement",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "CNERGY",
+    "Company Name": "Cnergyico PK Limited",
+    "Industry": "Refineries",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "COLG",
+    "Company Name": "Colgate-Palmolive (Pakistan) Limited",
+    "Industry": "Consumer Goods",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "ENGROH",
+    "Company Name": "Engro Holdings Limited",
+    "Industry": "Investment Holding",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "DCR",
+    "Company Name": "Dolmen City REIT",
+    "Industry": "Real Estate",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "DGKC",
+    "Company Name": "D.G. Khan Cement Company Limited",
+    "Industry": "Cement",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "EFERT",
+    "Company Name": "Engro Fertilizers Limited",
+    "Industry": "Fertilizer",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "EFUG",
+    "Company Name": "EFU General Insurance Limited",
+    "Industry": "Insurance",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "EPCL",
+    "Company Name": "Engro Polymer & Chemicals Limited",
+    "Industry": "Chemicals",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "FABL",
+    "Company Name": "Faysal Bank Limited",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "FATIMA",
+    "Company Name": "Fatima Fertilizer Company Limited",
+    "Industry": "Fertilizer",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "FCCL",
+    "Company Name": "Fauji Cement Company Limited",
+    "Industry": "Cement",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "FCEPL",
+    "Company Name": "Frieslandcampina Engro Pakistan Limited",
+    "Industry": "Food",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "FFBL",
+    "Company Name": "Fauji Fertilizer Bin Qasim Limited",
+    "Industry": "Fertilizer",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "FFC",
+    "Company Name": "Fauji Fertilizer Company Limited",
+    "Industry": "Fertilizer",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "FHAM",
+    "Company Name": "First Habib Modaraba",
+    "Industry": "Leasing",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "GADT",
+    "Company Name": "Gadoon Textile Mills Limited",
+    "Industry": "Textile",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "GHGL",
+    "Company Name": "Ghani Glass Limited",
+    "Industry": "Glass",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "GLAXO",
+    "Company Name": "GlaxoSmithKline Pakistan Limited",
+    "Industry": "Pharmaceuticals",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "HABSM",
+    "Company Name": "Habib Sugar Mills Limited",
+    "Industry": "Sugar",
+    "fiscal_period": "09-30"
+  },
+  {
+    "Symbol": "HBL",
+    "Company Name": "Habib Bank Limited",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "HINOON",
+    "Company Name": "Highnoon Laboratories Limited",
+    "Industry": "Pharmaceuticals",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "HMB",
+    "Company Name": "Habib Metropolitan Bank Limited",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "HUBC",
+    "Company Name": "The Hub Power Company Limited",
+    "Industry": "Power",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "IBFL",
+    "Company Name": "Ibrahim Fibres Limited",
+    "Industry": "Textile",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "ILP",
+    "Company Name": "Interloop Limited",
+    "Industry": "Textile",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "INDU",
+    "Company Name": "Indus Motor Company Limited",
+    "Industry": "Auto Assembly",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "INIL",
+    "Company Name": "International Industries Limited",
+    "Industry": "Industrials",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "ISL",
+    "Company Name": "International Steels Limited",
+    "Industry": "Steel",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "JVDC",
+    "Company Name": "Javedan Corporation Limited",
+    "Industry": "Real Estate",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "KAPCO",
+    "Company Name": "Kot Addu Power Company Limited",
+    "Industry": "Power",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "KOHC",
+    "Company Name": "Kohat Cement Company Limited",
+    "Industry": "Cement",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "KTML",
+    "Company Name": "Kohinoor Textile Mills Limited",
+    "Industry": "Textile",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "LCI",
+    "Company Name": "Lucky Core Industries Limited",
+    "Industry": "Chemicals",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "LOTCHEM",
+    "Company Name": "Lotte Chemical Pakistan Limited",
+    "Industry": "Chemicals",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "LUCK",
+    "Company Name": "Lucky Cement Limited",
+    "Industry": "Cement",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "MARI",
+    "Company Name": "Mari Petroleum Company Limited",
+    "Industry": "Upstream",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "MCB",
+    "Company Name": "MCB Bank Limited",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "MEBL",
+    "Company Name": "Meezan Bank Limited",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "MEHT",
+    "Company Name": "Mehmood Textile Mills Limited",
+    "Industry": "Textile",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "MLCF",
+    "Company Name": "Maple Leaf Cement Factory Limited",
+    "Industry": "Cement",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "MTL",
+    "Company Name": "Millat Tractors Limited",
+    "Industry": "Auto Assembly",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "MUGHAL",
+    "Company Name": "Mughal Iron & Steel Industries Limited",
+    "Industry": "Steel",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "MUREB",
+    "Company Name": "Murree Brewery Company Limited",
+    "Industry": "Food",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "NATF",
+    "Company Name": "National Foods Limited",
+    "Industry": "Food",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "NBP",
+    "Company Name": "National Bank of Pakistan",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "NCL",
+    "Company Name": "Nishat Chunian Limited",
+    "Industry": "Textile",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "NCPL",
+    "Company Name": "Nishat Chunian Power Limited",
+    "Industry": "Power",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "NESTLE",
+    "Company Name": "Nestle Pakistan Limited",
+    "Industry": "Food",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "NPL",
+    "Company Name": "Nishat Power Limited",
+    "Industry": "Power",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "NRL",
+    "Company Name": "National Refinery Limited",
+    "Industry": "Refineries",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "OGDC",
+    "Company Name": "Oil & Gas Development Company Limited",
+    "Industry": "Upstream",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "PABC",
+    "Company Name": "Pakistan Aluminium Beverage Cans Limited",
+    "Industry": "Packaging",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "PAEL",
+    "Company Name": "Pak Elektron Limited",
+    "Industry": "Industrials",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "PAKT",
+    "Company Name": "Pakistan Tobacco Company Limited",
+    "Industry": "Tobacco",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "PGLC",
+    "Company Name": "Pak-Gulf Leasing Company Limited",
+    "Industry": "Leasing",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "PIBTL",
+    "Company Name": "Pakistan International Bulk Terminal",
+    "Industry": "Logistics",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "PIOC",
+    "Company Name": "Pioneer Cement Limited",
+    "Industry": "Cement",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "PKGP",
+    "Company Name": "Pakgen Power Limited",
+    "Industry": "Power",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "PKGS",
+    "Company Name": "Packages Limited",
+    "Industry": "Packaging",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "POL",
+    "Company Name": "Pakistan Oilfields Limited",
+    "Industry": "Upstream",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "POML",
+    "Company Name": "Punjab Oil Mills Limited",
+    "Industry": "Food",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "PPL",
+    "Company Name": "Pakistan Petroleum Limited",
+    "Industry": "Upstream",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "PRL",
+    "Company Name": "Pakistan Refinery Limited",
+    "Industry": "Refineries",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "PSEL",
+    "Company Name": "Pakistan Services Limited",
+    "Industry": "Hospitality",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "PSO",
+    "Company Name": "Pakistan State Oil Company Limited",
+    "Industry": "OMC",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "PTC",
+    "Company Name": "Pakistan Telecommunication Company Ltd",
+    "Industry": "Telecommunications",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "RMPL",
+    "Company Name": "Rafhan Maize Products Company Limited",
+    "Industry": "Food",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "SCBPL",
+    "Company Name": "Standard Chartered Bank (Pak) Ltd",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "SEARL",
+    "Company Name": "The Searle Company Limited",
+    "Industry": "Pharmaceuticals",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "SHEL",
+    "Company Name": "Shell Pakistan Limited",
+    "Industry": "OMC",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "SHFA",
+    "Company Name": "Shifa International Hospitals Limited",
+    "Industry": "Healthcare",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "SNGP",
+    "Company Name": "Sui Northern Gas Pipelines Limited",
+    "Industry": "Gas Infrastructure",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "SPWL",
+    "Company Name": "Saif Power Limited",
+    "Industry": "Power",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "SRVI",
+    "Company Name": "Service Industries Limited",
+    "Industry": "Consumer Goods",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "SYS",
+    "Company Name": "Systems Limited",
+    "Industry": "Technology",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "TGL",
+    "Company Name": "Tariq Glass Industries Limited",
+    "Industry": "Glass",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "THALL",
+    "Company Name": "Thal Limited",
+    "Industry": "Industrials",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "TRG",
+    "Company Name": "TRG Pakistan Limited",
+    "Industry": "Technology",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "UBL",
+    "Company Name": "United Bank Limited",
+    "Industry": "Banking",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "UNITY",
+    "Company Name": "Unity Foods Limited",
+    "Industry": "Food",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "UPFL",
+    "Company Name": "Unilever Pakistan Foods Limited",
+    "Industry": "Food",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "YOUW",
+    "Company Name": "Yousaf Weaving Mills Limited",
+    "Industry": "Textile",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "BGL",
+    "Company Name": "Baluchistan Glass Limited",
+    "Industry": "Glass",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "GGGL",
+    "Company Name": "Ghani Global Glass Limited",
+    "Industry": "Glass",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "GVGL",
+    "Company Name": "Ghani Value Glass Limited",
+    "Industry": "Glass",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "ATLH",
+    "Company Name": "Atlas Honda Limited",
+    "Industry": "Auto Assembly",
+    "fiscal_period": "03-31"
+  },
+  {
+    "Symbol": "HCAR",
+    "Company Name": "Honda Atlas Cars (Pakistan) Limited",
+    "Industry": "Auto Assembly",
+    "fiscal_period": "03-31"
+  },
+  {
+    "Symbol": "GAL",
+    "Company Name": "Ghandhara Automobiles Limited",
+    "Industry": "Auto Assembly",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "AGTL",
+    "Company Name": "Al-Ghazi Tractors Limited",
+    "Industry": "Auto Assembly",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "AABS",
+    "Company Name": "Al-Abbas Sugar Mills Limited",
+    "Industry": "Sugar",
+    "fiscal_period": "09-30"
+  },
+  {
+    "Symbol": "ADAMS",
+    "Company Name": "Adam Sugar Mills Limited",
+    "Industry": "Sugar",
+    "fiscal_period": "09-30"
+  },
+  {
+    "Symbol": "BAFS",
+    "Company Name": "Baba Farid Sugar Mills Limited",
+    "Industry": "Sugar",
+    "fiscal_period": "09-30"
+  },
+  {
+    "Symbol": "ASL",
+    "Company Name": "Aisha Steel Mills Limited",
+    "Industry": "Steel",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "ASTL",
+    "Company Name": "Amreli Steels Limited",
+    "Industry": "Steel",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "AGHA",
+    "Company Name": "Agha Steel Ind.Ltd",
+    "Industry": "Steel",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "MSCL",
+    "Company Name": "Metropolitan Steel Corporation Limited",
+    "Industry": "Steel",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "AGIC",
+    "Company Name": "Askari General Insurance Company Limited",
+    "Industry": "Insurance",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "ALAC",
+    "Company Name": "Askari Life Assurance Company Limited",
+    "Industry": "Insurance",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "ATIL",
+    "Company Name": "Atlas Insurance Limited",
+    "Industry": "Insurance",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "CENI",
+    "Company Name": "Century Insurance Company Limited",
+    "Industry": "Insurance",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "FDPL",
+    "Company Name": "First Dawood Properties Limited",
+    "Industry": "Real Estate",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "GRR",
+    "Company Name": "Globe Residency REIT",
+    "Industry": "Real Estate",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "TPLP",
+    "Company Name": "TPL Properties Limited",
+    "Industry": "Real Estate",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "GRYL",
+    "Company Name": "Grays Leasing Limited",
+    "Industry": "Leasing",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "SLCL",
+    "Company Name": "Security Leasing Corporation Limited",
+    "Industry": "Leasing",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "KHTC",
+    "Company Name": "Khyber Tobacco Company Limited",
+    "Industry": "Tobacco",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "AKDHL",
+    "Company Name": "AKD Hospitality Limited",
+    "Industry": "Hospitality",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "PHDL",
+    "Company Name": "Pakistan Hotels Developers Limited",
+    "Industry": "Hospitality",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "CPHL",
+    "Company Name": "Citi Pharma Ltd.",
+    "Industry": "Pharmaceuticals",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "IBLHL",
+    "Company Name": "IBL HealthCare Limited",
+    "Industry": "Healthcare",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "SSGC",
+    "Company Name": "Sui Southern Gas Company Limited",
+    "Industry": "Gas Infrastructure",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "DAWH",
+    "Company Name": "Dawood Hercules Corporation Limited",
+    "Industry": "Investment Holding",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "ENGRO",
+    "Company Name": "Engro Corporation Limited",
+    "Industry": "Conglomerate",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "ICI",
+    "Company Name": "ICI Pakistan Limited",
+    "Industry": "Chemicals",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "HALEON",
+    "Company Name": "Haleon Pakistan Limited",
+    "Industry": "Pharmaceuticals",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "HUMNL",
+    "Company Name": "Hum Network Limited",
+    "Industry": "Technology",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "SAZEW",
+    "Company Name": "Sazgar Engineering Works Limited",
+    "Industry": "Auto Assembly",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "SITC",
+    "Company Name": "Sitara Chemical Industries Limited",
+    "Industry": "Chemicals",
+    "fiscal_period": "06-30"
+  },
+    {
+    "Symbol": "THCCL",
+    "Company Name": "Thatta Cement Company Limited",
+    "Industry": "Cement",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "PIAHCLA",
+    "Company Name": "Pakistan International Airlines Corp",
+    "Industry": "Airlines",
+    "fiscal_period": "12-31"
+  },
+  {
+    "Symbol": "NETSOL",
+    "Company Name": "NetSol Technologies Limited",
+    "Industry": "Technology",
+    "fiscal_period": "06-30"
+  },
+  {
+    "Symbol": "KEL",
+    "Company Name": "K-Electric Limited",
+    "Industry": "Power",
+    "fiscal_period": "06-30"
+  }
+]

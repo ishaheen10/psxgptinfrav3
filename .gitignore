@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Environment and secrets
+.env
+.env.*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code
+.claude/
+
+# Data directories (large files, regenerable)
+data/
+archive/
+artifacts/
+
+# Symlinks to external data
+markdown_pages
+pdf_pages
+database_pdfs
+
+# Lock files (optional - uncomment to track)
+# uv.lock

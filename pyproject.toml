@@ -1,0 +1,28 @@
+[project]
+name = "psxgptinfrav3"
+version = "0.1.0"
+description = "PSX Financial Data Pipeline V3"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "playwright>=1.40.0",
+    "boto3>=1.34.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "certifi>=2025.8.3",
+    "mistralai>=1.2.0",
+    "google-generativeai>=0.8.5",
+    "dspy-ai>=3.0.3",
+    "pydantic>=2.11.7",
+    "pypdf>=5.0.0",
+    "tqdm>=4.66.0",
+    "pdf2image>=1.17.0",
+    "Pillow>=10.0.0",
+    "google-cloud-storage>=3.4.0",
+    "google-genai>=1.38.0",
+    "numpy>=1.24.0",
+    "supabase>=2.0.0",
+    "PyMuPDF>=1.24.9",
+    "datalab-python-sdk>=0.1.0",
+    "openai>=1.42.0",
+]

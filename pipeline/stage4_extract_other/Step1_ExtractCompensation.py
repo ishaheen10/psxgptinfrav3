@@ -1,29 +1,22 @@
 #!/usr/bin/env python3
 """
-Step 11: Extract Multi-Year Historical Summaries (Optional)
+Step 1: Extract Executive Compensation Data
 
-Extracts multi-year summary tables from annual reports and flattens to JSONL.
-These are "At a Glance" / "Six Year Summary" / "Key Financial Data" pages.
+Extracts executive compensation tables from annual reports to markdown.
 
-Input:  Pages tagged with 'multi_year' in extraction manifest
+Input:  Pages tagged with 'ceo_comp' in extraction manifest
         markdown_pages/{TICKER}/{YEAR}/...
-Output: multiyear/{TICKER}_{year}.json
-        multiyear_flattened.jsonl (for database upload)
+Output: data/extracted_compensation/{TICKER}_compensation_{YEAR}.md
 
-Data Types:
-- monetary: Balance Sheet, P&L, Cash Flow items (amounts in PKR)
-- ratio: Financial ratios, percentages, per-share data
+Roles extracted:
+- CEO, Chairman, Executive Directors, Non-Executive Directors, Executives
 
-Units Terminology:
-    All monetary values stored in 'thousands' (PKR '000).
-    Ratios stored as raw numbers (e.g., 1.5 for current ratio).
-    Extraction prompt explicitly requests these formats.
+Units: All values stored in thousands (PKR '000).
 
 Usage:
-    python3 Step11_ExtractMultiYear.py                     # Process all
-    python3 Step11_ExtractMultiYear.py --ticker LUCK       # Single ticker
-    python3 Step11_ExtractMultiYear.py --year 2024         # Single year
-    python3 Step11_ExtractMultiYear.py --flatten-only      # Just flatten existing
+    python3 Step1_ExtractCompensation.py                     # Process all
+    python3 Step1_ExtractCompensation.py --ticker HBL        # Single ticker
+    python3 Step1_ExtractCompensation.py --year 2024         # Single year
 """
 
 import argparse
@@ -32,6 +25,7 @@ import os
 import re
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -46,26 +40,24 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 EXTRACTION_MANIFEST = PROJECT_ROOT / "artifacts" / "stage2" / "step6_extraction_manifest.json"
 MARKDOWN_PAGES = PROJECT_ROOT / "markdown_pages"
 TICKERS_FILE = PROJECT_ROOT / "tickers100.json"
-OUTPUT_DIR = PROJECT_ROOT / "multiyear"
-OUTPUT_JSONL = PROJECT_ROOT / "multiyear_flattened.jsonl"
+OUTPUT_DIR = PROJECT_ROOT / "compensation"
+OUTPUT_JSONL = PROJECT_ROOT / "compensation_flattened.jsonl"
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts" / "stage3"
 
 WORKERS = 30
+write_lock = Lock()
 
 
 # =============================================================================
 # EXTRACTION PROMPT
 # =============================================================================
 
-EXTRACTION_PROMPT = """Extract multi-year financial summary tables from these pages.
-
-These are historical summaries like "Six Years at a Glance", "Horizontal Analysis",
-"Vertical Analysis", or "Key Financial Data".
+EXTRACTION_PROMPT = """Extract executive compensation data from these annual report pages.
 
 ## UNIT DETECTION - CRITICAL
 
 Look for the unit specification in the document:
-- "Rupees in thousands" / "Rs. 000" / "(000)" → values in thousands
+- "Rupees in thousands" / "Rs. 000" / "(000)" / "Rs '000" → values in thousands
 - "Rupees in millions" / "Rs. in millions" → multiply by 1000 for thousands
 - "Rupees" (no multiplier) / large numbers → divide by 1000 for thousands
 
@@ -76,45 +68,20 @@ Output a JSON object with this structure:
 ```json
 {
   "unit_detected": "thousands",
-  "tables": [
-    {
-      "name": "Balance Sheet Summary",
-      "data_type": "monetary",
-      "years": [2024, 2023, 2022, 2021, 2020, 2019],
-      "items": [
-        {"line_item": "Total Assets", "values": [500000, 450000, 400000, 350000, 300000, 250000]},
-        {"line_item": "Total Liabilities", "values": [300000, 270000, 240000, 210000, 180000, 150000]}
-      ]
-    },
-    {
-      "name": "Profit & Loss Summary",
-      "data_type": "monetary",
-      "years": [2024, 2023, 2022, 2021, 2020, 2019],
-      "items": [
-        {"line_item": "Revenue", "values": [100000, 90000, 80000, 70000, 60000, 50000]}
-      ]
-    },
-    {
-      "name": "Financial Ratios",
-      "data_type": "ratio",
-      "years": [2024, 2023, 2022, 2021, 2020, 2019],
-      "items": [
-        {"line_item": "Current Ratio", "values": [1.5, 1.4, 1.3, 1.2, 1.1, 1.0]},
-        {"line_item": "P/E Ratio", "values": [12.5, 11.0, 10.5, 9.8, 8.5, 7.2]}
-      ]
-    }
-  ]
+  "consolidated": {
+    "ceo": {"persons": 1, "base_salary": 393071, "bonus": 332602, "housing": 43898, "retirement": 0, "other": 32517, "total": 802088},
+    "chairman": {"persons": 1, "base_salary": 0, "bonus": 0, "housing": 0, "retirement": 0, "other": 13050, "total": 13050},
+    "exec_directors": {"persons": 2, "base_salary": 150000, "bonus": 50000, "housing": 20000, "retirement": 5000, "other": 10000, "total": 235000},
+    "non_exec_directors": {"persons": 5, "base_salary": 0, "bonus": 0, "housing": 0, "retirement": 0, "other": 98875, "total": 98875},
+    "executives": {"persons": 32, "base_salary": 1200348, "bonus": 827305, "housing": 342676, "retirement": 57146, "other": 257181, "total": 2684656}
+  },
+  "unconsolidated": null
 }
 ```
 
-## RULES
+ALL VALUES MUST BE IN THOUSANDS. Convert if source uses different units.
 
-1. All MONETARY values in THOUSANDS. Convert if source uses different units.
-2. RATIOS stored as raw numbers (no % sign, just the value).
-3. Use null for missing values.
-4. Each table needs: name, data_type (monetary/ratio), years array, items array.
-5. Years should be integers, most recent first.
-6. Line items should have clear text descriptions.
+Only include roles that have actual compensation data. Return null for sections not found.
 
 SOURCE PAGES:
 """
@@ -141,11 +108,11 @@ def load_ticker_meta() -> dict:
     return {t['Symbol']: t for t in tickers}
 
 
-def get_multiyear_pages(manifest: dict, ticker: str, period: str) -> list:
-    """Get multi-year page numbers for a filing."""
+def get_compensation_pages(manifest: dict, ticker: str, period: str) -> list:
+    """Get compensation page numbers for a filing."""
     filing_key = f"{ticker}_{period}"
     filing = manifest.get('filings', {}).get(filing_key, {})
-    pages = filing.get('pages', {}).get('multi_year', [])
+    pages = filing.get('pages', {}).get('ceo_comp', [])
     return sorted(pages)
 
 
@@ -159,8 +126,8 @@ def read_pages(ticker: str, year: str, doc: str, page_nums: list) -> str:
     return "\n\n---\n\n".join(content)
 
 
-def extract_multiyear(client, pages_content: str, ticker: str, year: str) -> dict:
-    """Call DeepSeek to extract multi-year data."""
+def extract_compensation(client, pages_content: str, ticker: str, year: str) -> dict:
+    """Call DeepSeek to extract compensation data."""
     prompt = EXTRACTION_PROMPT + pages_content
 
     response = client.chat.completions.create(
@@ -178,39 +145,37 @@ def extract_multiyear(client, pages_content: str, ticker: str, year: str) -> dic
 # FLATTEN TO JSONL
 # =============================================================================
 
-def flatten_multiyear(data: dict, ticker: str, source_year: str, ticker_meta: dict) -> list:
-    """Flatten multi-year data to database rows."""
+def flatten_compensation(data: dict, ticker: str, year: str, ticker_meta: dict) -> list:
+    """Flatten compensation data to database rows."""
     rows = []
     meta = ticker_meta.get(ticker, {})
 
-    for table in data.get('tables', []):
-        table_name = table.get('name', 'Unknown')
-        data_type = table.get('data_type', 'monetary')
-        years = table.get('years', [])
+    for scope in ['consolidated', 'unconsolidated']:
+        scope_data = data.get(scope)
+        if not scope_data:
+            continue
 
-        for item in table.get('items', []):
-            line_item = item.get('line_item', '')
-            values = item.get('values', [])
+        for role, values in scope_data.items():
+            if not isinstance(values, dict):
+                continue
 
-            for i, year in enumerate(years):
-                value = values[i] if i < len(values) else None
-
-                if value is None:
-                    continue
-
-                row = {
-                    'ticker': ticker,
-                    'company_name': meta.get('Company Name', ''),
-                    'industry': meta.get('Industry', ''),
-                    'source_year': int(source_year),
-                    'data_year': int(year) if year else None,
-                    'table_name': table_name,
-                    'data_type': data_type,
-                    'line_item': line_item,
-                    'value': value,
-                    'unit': 'thousands' if data_type == 'monetary' else 'ratio',
-                }
-                rows.append(row)
+            row = {
+                'ticker': ticker,
+                'company_name': meta.get('Company Name', ''),
+                'industry': meta.get('Industry', ''),
+                'year': int(year),
+                'scope': scope,
+                'role': role,
+                'persons': values.get('persons'),
+                'base_salary': values.get('base_salary'),
+                'bonus': values.get('bonus'),
+                'housing': values.get('housing'),
+                'retirement': values.get('retirement'),
+                'other_benefits': values.get('other'),
+                'total': values.get('total'),
+                'unit': 'thousands',
+            }
+            rows.append(row)
 
     return rows
 
@@ -227,14 +192,14 @@ def process_filing(ticker: str, year: str, doc: str, pages: list, client,
         return None, []
 
     try:
-        data = extract_multiyear(client, pages_content, ticker, year)
+        data = extract_compensation(client, pages_content, ticker, year)
 
         # Save individual JSON
         output_path = OUTPUT_DIR / f"{ticker}_{year}.json"
         output_path.write_text(json.dumps(data, indent=2))
 
         # Flatten
-        rows = flatten_multiyear(data, ticker, year, ticker_meta)
+        rows = flatten_compensation(data, ticker, year, ticker_meta)
         return data, rows
 
     except Exception as e:
@@ -243,7 +208,7 @@ def process_filing(ticker: str, year: str, doc: str, pages: list, client,
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract multi-year summaries")
+    parser = argparse.ArgumentParser(description="Extract executive compensation")
     parser.add_argument("--ticker", help="Single ticker")
     parser.add_argument("--year", help="Single year")
     parser.add_argument("--flatten-only", action="store_true",
@@ -252,7 +217,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 70)
-    print("STEP 11: EXTRACT MULTI-YEAR SUMMARIES")
+    print("STEP 10: EXTRACT COMPENSATION")
     print("=" * 70)
     print()
 
@@ -273,7 +238,7 @@ def main():
             year = parts[1] if len(parts) > 1 else ""
 
             data = json.loads(json_path.read_text())
-            rows = flatten_multiyear(data, ticker, year, ticker_meta)
+            rows = flatten_compensation(data, ticker, year, ticker_meta)
             all_rows.extend(rows)
 
         with open(OUTPUT_JSONL, 'w') as f:
@@ -295,11 +260,12 @@ def main():
 
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
 
-    # Find filings with multi-year pages
+    # Find filings with compensation pages
     filings_to_process = []
+    stats = manifest.get('stats', {})
 
     for filing_key, filing_data in manifest.get('filings', {}).items():
-        pages = filing_data.get('pages', {}).get('multi_year', [])
+        pages = filing_data.get('pages', {}).get('ceo_comp', [])
         if not pages:
             continue
 
@@ -308,7 +274,7 @@ def main():
         ticker = parts[0]
         period = '_'.join(parts[1:])
 
-        # Only annual reports have multi-year summaries
+        # Only annual reports have compensation
         if not period.startswith('Annual'):
             continue
 
@@ -328,7 +294,7 @@ def main():
 
         filings_to_process.append((ticker, year, doc, pages))
 
-    print(f"Filings with multi-year pages: {len(filings_to_process)}")
+    print(f"Filings with compensation pages: {len(filings_to_process)}")
 
     if not filings_to_process:
         print("No filings to process")

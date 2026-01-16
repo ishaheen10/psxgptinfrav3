@@ -5,14 +5,15 @@ This is the clean V3 implementation of the PSX financial data extraction pipelin
 ## Pipeline Overview
 
 ```
-markdown_pages/ → Classification → Repair → Extraction Manifest → (Stage 3) → Database
+markdown_pages/ → Classification → Repair → Extract Statements → Extract Other → Publish
 ```
 
-**4 Stages:**
+**5 Stages:**
 - **Stage 1: Ingest** - Download PDFs, OCR to markdown (already done - symlinked)
 - **Stage 2: Review** - Classify pages, repair OCR issues, build extraction manifest
-- **Stage 3: Extract** - Pull financial statements, validate arithmetic
-- **Stage 4: Publish** - Flatten, unify, upload to Cloudflare D1
+- **Stage 3: Extract Statements** - Pull P&L, Balance Sheet, Cash Flow; validate arithmetic
+- **Stage 4: Extract Other** - Pull Compensation + Multi-Year summaries; validate source match
+- **Stage 5: Publish** - Flatten, unify, upload to Cloudflare D1
 
 ## Quick Start
 
@@ -23,11 +24,14 @@ markdown_pages/ → Classification → Repair → Extraction Manifest → (Stage
 # Stage 2 (Classification + Repair)
 ./scripts/run_stage2.sh
 
-# Stage 3 (Extraction)
+# Stage 3 (Extract Statements)
 ./scripts/run_stage3.sh
 
-# Stage 4 (Publish)
+# Stage 4 (Extract Other: Compensation + Multi-Year)
 ./scripts/run_stage4.sh
+
+# Stage 5 (Publish)
+./scripts/run_stage5.sh
 
 # Or run Stages 1-2 together
 ./scripts/run_all.sh
@@ -38,20 +42,27 @@ markdown_pages/ → Classification → Repair → Extraction Manifest → (Stage
 ```
 psxgptinfrav3/
 ├── pipeline/
-│   ├── shared/           # Checkpoint & incremental processing
-│   ├── stage1_ingest/    # Steps 1-8 (Ingest)
-│   ├── stage2_review/    # Steps 1-7 (Review)
-│   ├── stage3_extract/   # Steps 1-14 (Extract)
-│   ├── stage4_publish/   # Steps 0-8 (Publish)
-│   └── utilities/        # Ad-hoc repair scripts
-├── artifacts/            # QC reports, manifests, checkpoints
+│   ├── shared/                # Checkpoint & incremental processing
+│   ├── stage1_ingest/         # Steps 1-8 (Ingest)
+│   ├── stage2_review/         # Steps 1-7 (Review)
+│   ├── stage3_extract_statements/  # P&L, BS, CF extraction
+│   ├── stage4_extract_other/  # Compensation, Multi-Year extraction
+│   ├── stage5_publish/        # Flatten + Upload to D1
+│   └── utilities/             # Ad-hoc repair scripts
+├── artifacts/                 # QC reports, manifests, checkpoints
 │   ├── stage1/
 │   ├── stage2/
 │   ├── stage3/
-│   └── stage4/
-├── markdown_pages/       # Symlink to main repo's OCR output
-├── scripts/              # Shell scripts to run pipeline
-└── docs/                 # Design documentation
+│   ├── stage4/
+│   └── stage5/
+├── data/                      # Extracted data
+│   ├── extracted_compensation/
+│   ├── extracted_multiyear/
+│   ├── json_compensation/
+│   └── json_multiyear/
+├── markdown_pages/            # Symlink to main repo's OCR output
+├── scripts/                   # Shell scripts to run pipeline
+└── docs/                      # Design documentation
 ```
 
 ## Key Files

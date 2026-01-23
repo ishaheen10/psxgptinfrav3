@@ -34,7 +34,7 @@ CHECKPOINT_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step3_checkpoint.json
 
 # DeepSeek config
 DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_EXTRACT_MODEL", "deepseek-reasoner")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_EXTRACT_MODEL", "deepseek-chat")
 MAX_RETRIES = 3
 RETRY_WAIT = 5.0
 
@@ -119,14 +119,33 @@ Key bank fields: bank_interest_income, bank_interest_expense -> net_interest_inc
 Non-interest income: fee_income, fx_income, dividend_income, trading_gains
 Expenses: operating_expenses, provisions
 
-PROVISION SIGNS - CRITICAL: Copy the EXACT sign from source for provisions/credit loss:
-- If source shows "960,203" (no parentheses) = expense, output: 960,203
-- If source shows "(960,203)" (with parentheses) = reversal, output: (960,203)
-- Do NOT add parentheses that aren't in the source - this breaks formulas"""
+PROVISIONS AND REVERSALS: Banks show provisions with REVERSED parentheses convention.
+- When the source shows provisions IN PARENTHESES like (2,710,139) → this is a REVERSAL/CREDIT → store as POSITIVE (adds to profit)
+- When the source shows provisions WITHOUT parentheses like 2,976,973 → this is an EXPENSE → store as NEGATIVE (reduces profit)
+- This is OPPOSITE of the normal parentheses convention - for bank provisions, parentheses = good (reversal), no parentheses = bad (expense)"""
     elif company_type == "INSURANCE":
         return """
 Key insurance fields: gross_premium, net_premium, claims_expense -> underwriting_profit (instead of gross_profit)
-Other income: investment_income"""
+Other income: investment_income
+
+CRITICAL SIGN CONVENTION FOR INSURANCE:
+- ALL expense items must be NEGATIVE (in parentheses): claims_expense, commission_expense, operating_expenses, acquisition_expenses, other_underwriting
+- Reinsurance RECOVERIES are POSITIVE (they reduce the expense/add back money)
+- Net claims = Claims (negative) + Recoveries (positive) = net negative
+- Example: If "Insurance benefits" is 479,719 in source, store as (479,719) because it's an expense
+- Example: If "Reinsurance recoveries" is 331,635 in source, store as 331,635 (positive, it's a recovery)
+
+INSURANCE P&L STRUCTURE:
+Insurance P&Ls have TWO separate expense sections, each with its own subtotal:
+1. Claims section → ends with "Net claims" or "Net insurance benefits" subtotal
+2. Operating expenses section → ends with "Total expenses" subtotal
+
+These are SEPARATE subtotals. "Total expenses" does NOT include the claims subtotal.
+The formula for each subtotal should only include items within that section.
+
+HIERARCHICAL SUBTOTALS: Insurance P&Ls often show subtotals that already include prior line items.
+- If "Net claims" = "Claims incurred" + "Reinsurance recoveries", don't include all three in formulas
+- Use the subtotal OR the components, not both (to avoid double-counting)"""
     return ""
 
 
@@ -206,18 +225,30 @@ UNIT_TYPE: thousands | millions | rupees
 
 ## UNIT_TYPE
 
-Copy the EXACT unit from the source document header or footer:
-- "(Rupees in '000)" or "(Rs. in thousands)" → thousands
-- "(Rs. in millions)" → millions
-- "(Rupees)" with no scale indicator → rupees
+Look for scale indicators in the document header, footer, or column headers. The key word to find is the SCALE (thousand/million), not the currency.
 
-If no unit indicator is found, default to "thousands".
+**Decision rules (check in this order):**
+1. If you see "'000", "thousand", "in 000s", or "000's" anywhere → **thousands**
+2. If you see "million" or "in millions" → **millions**
+3. If you see ONLY "Rupees" or "Rs." with NO scale indicator → **rupees**
+4. If no unit indicator found → default to **thousands**
+
+**Common patterns that mean THOUSANDS:**
+- "Rupees in thousand" → thousands
+- "Rs. in '000" → thousands
+- "(Rupees in '000)" → thousands
+- "Amount in PKR '000" → thousands
+- "(Rs. '000)" → thousands
+
+**IMPORTANT**: "Rupees in thousand" means thousands, NOT rupees. The scale indicator always takes precedence over the currency name.
 
 ## SIGN CONVENTION
 
 - Costs, expenses, taxes = NEGATIVE in parentheses: (800,000)
 - Revenue, income, profit = POSITIVE: 1,234,567
 - Formulas use ADDITION ONLY: C=A+B (parentheses handle the sign, never use minus)
+
+**"Less:" and "Add:" prefixes**: Line items prefixed with "Less:" are deductions and must be stored as negatives (in parentheses), even if the source shows them without parentheses. Line items prefixed with "Add:" are additions and should be positive.
 
 ## REF COLUMN
 
@@ -247,14 +278,65 @@ If source says only "Period ended [date]" without specifying duration, use the m
 
 If pages do NOT contain a {section_label} P&L statement, output ONLY one flag:
 - `PAGE_ERROR: NO_PL_FOUND`
-- `PAGE_ERROR: WRONG_SECTION` (wrong consolidation type)
 - `PAGE_ERROR: BALANCE_SHEET_ONLY`
 - `PAGE_ERROR: CASH_FLOW_ONLY`
 - `PAGE_ERROR: NOTES_ONLY`
 
+**IMPORTANT**: Extract whatever periods exist on the page, regardless of the filing name. A "quarterly" filing may contain 3M, 6M, or 9M periods - extract ALL of them. The filing name does NOT determine what periods are valid.
+
+**IMPORTANT**: If the page contains a P&L statement (Profit & Loss, Income Statement, Statement of Comprehensive Income), extract it regardless of whether it has a "consolidated" or "unconsolidated" label. Many companies are standalone entities without subsidiaries and won't have consolidation labels - still extract their P&L.
+
 ## CANONICAL FIELDS
 
 {', '.join(pl_fields)}
+
+**IMPORTANT**: Do NOT force a match to these fields. If a line item doesn't clearly match any canonical field above, create an appropriate snake_case name that accurately describes it. Examples:
+- "Profit from continuing operations" → `net_profit_continuing`
+- "Loss from discontinued operations" → `net_profit_discontinued`
+- "Share of profit from associates" → `share_of_associates`
+- "Workers' Welfare Fund" → `workers_welfare_fund`
+
+The goal is accurate data capture, not forcing everything into predefined buckets.
+
+## UNIQUE CANONICAL FIELDS (ONE OCCURRENCE ONLY)
+
+These key fields must appear EXACTLY ONCE in the output. If you see multiple candidates, use the TOTAL line:
+
+- `gross_profit` - The single gross profit subtotal (revenue minus COGS)
+- `operating_profit` - The single operating profit subtotal
+- `profit_before_tax` - The single PBT line (before any attribution breakdown)
+- `net_profit` - The single TOTAL net profit (before any attribution breakdown). Use `net_profit` even if the company has a loss - negative values represent losses.
+- `eps` - The single total EPS figure
+
+**ATTRIBUTION LINES** (appear AFTER net_profit): These show how net_profit is split between owners:
+- "Profit attributable to owners of parent" → `net_profit_parent` (NOT net_profit)
+- "Profit attributable to non-controlling interests" → `nci_income` (NOT net_profit)
+- "Equity holders of the holding company" → `net_profit_parent`
+
+**ASSOCIATES vs NCI**:
+- "Share of profit from associates/joint ventures" → `share_of_associates` (NOT other_income, NOT nci_income)
+- "Share in profit of associated companies" → `share_of_associates`
+- "Non-controlling interests" → `nci_income`
+
+**CONTINUING/DISCONTINUED OPERATIONS**:
+- "Profit from continuing operations" / "Profit after tax from core operations" / "Profit after taxation from refinery operations" → `net_profit_continuing` (NOT profit_after_tax_core)
+- "Profit/Loss from discontinued operations" → `net_profit_discontinued`
+- The TOTAL after both → `net_profit`
+
+**REVENUE FIELDS** (each canonical must appear only once):
+- `revenue_net` - Only the FINAL net revenue line after all deductions. If multiple lines build up to net revenue, only the final subtotal gets `revenue_net`.
+- `revenue_gross` - Gross revenue/sales before deductions
+- `revenue_deductions` - Sales tax, excise duty, rebates, commissions, tariff adjustments, freight margins (these reduce gross to net)
+
+Example: "Gross sales" (A) minus "Sales tax" (B) minus "Rebates" (C) = "Net sales" (D=A+B+C)
+→ A: revenue_gross, B: revenue_deductions, C: revenue_deductions, D: revenue_net
+
+**TAXATION FIELDS** (use these canonical names):
+- Total taxation line → `taxation` (NOT total_taxation, income_tax, tax_expense)
+- Current tax / Current year → `taxation_current` (NOT current_tax, current_tax_year)
+- Deferred tax → `taxation_deferred` (NOT deferred_tax, deferred_tax_year)
+- Prior period tax → `taxation_prior` (NOT prior_year_tax, current_tax_prior_year)
+- If only one taxation line exists, use `taxation`
 
 ## SOURCE PAGES
 

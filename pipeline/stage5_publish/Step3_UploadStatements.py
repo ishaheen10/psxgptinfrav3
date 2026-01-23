@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Step 3: Upload P&L Data to Cloudflare D1
+Step 3: Upload Statement Data to Cloudflare D1
 
-Generates SQL and uploads flattened P&L data to the `financial_statements` table.
+Generates SQL and uploads flattened statement data (PL, BS, CF) to the `financial_statements` table.
 
-Input:  data/flat/pl.jsonl
-Output: artifacts/stage5/step3_pl_upload.sql + upload to D1
+Input:  data/flat/{pl,bs,cf}.jsonl
+Output: artifacts/stage5/step3_{pl,bs,cf}_upload.sql + upload to D1
 
 Usage:
-    python3 Step3_UploadPL.py                    # Generate SQL + upload
-    python3 Step3_UploadPL.py --sql-only         # Generate SQL only
-    python3 Step3_UploadPL.py --upload-only      # Upload existing SQL
-    python3 Step3_UploadPL.py --batch-size 5000  # Custom batch size
+    python3 Step3_UploadStatements.py --type pl          # Upload P&L only
+    python3 Step3_UploadStatements.py --type bs          # Upload Balance Sheet only
+    python3 Step3_UploadStatements.py --type cf          # Upload Cash Flow only
+    python3 Step3_UploadStatements.py --type all         # Upload all statement types
+    python3 Step3_UploadStatements.py --type bs --sql-only   # Generate SQL only
+    python3 Step3_UploadStatements.py --type cf --batch-size 3000
 """
 
 import argparse
@@ -23,8 +25,8 @@ from pathlib import Path
 from datetime import datetime
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-INPUT_FILE = PROJECT_ROOT / "data" / "flat" / "pl.jsonl"
-OUTPUT_SQL = PROJECT_ROOT / "artifacts" / "stage5" / "step3_pl_upload.sql"
+DATA_FLAT_DIR = PROJECT_ROOT / "data" / "flat"
+ARTIFACTS_DIR = PROJECT_ROOT / "artifacts" / "stage5"
 
 # D1 database name
 D1_DATABASE = "psx"
@@ -50,6 +52,13 @@ COLUMNS = [
     "method",
     "source_file"
 ]
+
+# Statement type configs
+STATEMENT_TYPES = {
+    'pl': {'input': 'pl.jsonl', 'output': 'step3_pl_upload.sql', 'name': 'Profit & Loss'},
+    'bs': {'input': 'bs.jsonl', 'output': 'step3_bs_upload.sql', 'name': 'Balance Sheet'},
+    'cf': {'input': 'cf.jsonl', 'output': 'step3_cf_upload.sql', 'name': 'Cash Flow'},
+}
 
 
 def escape_sql(value) -> str:
@@ -77,18 +86,16 @@ def generate_insert(row: dict) -> str:
     return f"INSERT INTO {TABLE_NAME} ({cols_sql}) VALUES ({vals_sql});"
 
 
-def generate_sql(input_file: Path, output_file: Path) -> int:
+def generate_sql(input_file: Path, output_file: Path, statement_name: str) -> int:
     """Generate SQL file from JSONL. Returns row count."""
     print(f"Reading: {input_file}")
 
     row_count = 0
     with open(input_file) as f_in, open(output_file, 'w') as f_out:
-        # Write header
-        f_out.write(f"-- {TABLE_NAME} P&L upload\n")
+        f_out.write(f"-- {TABLE_NAME} {statement_name} upload\n")
         f_out.write(f"-- Generated: {datetime.now().isoformat()}\n")
         f_out.write(f"-- Source: {input_file.name}\n\n")
 
-        # Write inserts (table already created by user)
         for line in f_in:
             if not line.strip():
                 continue
@@ -132,10 +139,9 @@ def upload_batch(sql_content: str, batch_num: int, total_batches: int) -> bool:
 
 def upload_sql(sql_file: Path, batch_size: int = 5000) -> bool:
     """Upload SQL file to D1 in batches."""
-    print(f"\nUploading: {sql_file}")
+    print(f"Uploading: {sql_file}")
     print(f"Batch size: {batch_size}")
 
-    # Collect INSERT statements only (table already exists)
     insert_statements = []
 
     with open(sql_file) as f:
@@ -144,7 +150,6 @@ def upload_sql(sql_file: Path, batch_size: int = 5000) -> bool:
             if line_stripped.startswith('INSERT'):
                 insert_statements.append(line_stripped)
 
-    # Upload INSERT statements in batches
     if not insert_statements:
         print("No data to upload")
         return True
@@ -159,66 +164,97 @@ def upload_sql(sql_file: Path, batch_size: int = 5000) -> bool:
 
         if not upload_batch(batch_sql, batch_num, total_batches):
             print(f"\nUpload failed at batch {batch_num}")
-            print("You can resume by running with --upload-only after fixing the issue")
             return False
 
-    print(f"\nUpload complete: {len(insert_statements):,} rows")
+    print(f"Upload complete: {len(insert_statements):,} rows")
+    return True
+
+
+def process_statement_type(stmt_type: str, config: dict, args) -> bool:
+    """Process a single statement type."""
+    input_file = DATA_FLAT_DIR / config['input']
+    output_file = ARTIFACTS_DIR / config['output']
+    statement_name = config['name']
+
+    print()
+    print("=" * 60)
+    print(f"{statement_name.upper()}")
+    print("=" * 60)
+
+    # Generate SQL
+    if not args.upload_only:
+        if not input_file.exists():
+            print(f"ERROR: Input file not found: {input_file}")
+            print(f"Run Step1_Flatten{stmt_type.upper()}.py first.")
+            return False
+
+        row_count = generate_sql(input_file, output_file, statement_name)
+
+        if row_count == 0:
+            print("No data to upload")
+            return True
+
+    # Upload
+    if not args.sql_only:
+        if not output_file.exists():
+            print(f"ERROR: SQL file not found: {output_file}")
+            return False
+
+        success = upload_sql(output_file, args.batch_size)
+        if not success:
+            return False
+
     return True
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Upload P&L data to D1")
+    parser = argparse.ArgumentParser(description="Upload statement data to D1")
+    parser.add_argument("--type", required=True, choices=['pl', 'bs', 'cf', 'all'],
+                        help="Statement type to upload")
     parser.add_argument("--sql-only", action="store_true", help="Generate SQL only, don't upload")
     parser.add_argument("--upload-only", action="store_true", help="Upload existing SQL, don't regenerate")
     parser.add_argument("--batch-size", type=int, default=5000, help="Batch size for uploads")
     args = parser.parse_args()
 
-    # Generate SQL
-    if not args.upload_only:
-        if not INPUT_FILE.exists():
-            print(f"ERROR: Input file not found: {INPUT_FILE}")
-            print("Run Step1_FlattenPL.py first.")
-            return 1
+    print("=" * 60)
+    print("UPLOAD STATEMENTS TO D1")
+    print("=" * 60)
+    print(f"Database: {D1_DATABASE}")
+    print(f"Table: {TABLE_NAME}")
 
-        row_count = generate_sql(INPUT_FILE, OUTPUT_SQL)
+    # Determine which types to process
+    if args.type == 'all':
+        types_to_process = ['pl', 'bs', 'cf']
+    else:
+        types_to_process = [args.type]
 
-        if row_count == 0:
-            print("No data to upload")
-            return 0
-
-    # Upload
+    # Confirm upload
     if not args.sql_only:
-        if not OUTPUT_SQL.exists():
-            print(f"ERROR: SQL file not found: {OUTPUT_SQL}")
-            print("Run without --upload-only first.")
-            return 1
-
         print()
-        print("=" * 60)
-        print("UPLOADING TO D1")
-        print("=" * 60)
-        print(f"Database: {D1_DATABASE}")
-        print(f"Table: {TABLE_NAME}")
-        print()
-
+        print(f"Statement types: {', '.join(types_to_process)}")
         confirm = input("Proceed with upload? (y/N) ")
         if confirm.lower() != 'y':
-            print("Aborted. SQL file saved to:", OUTPUT_SQL)
+            print("Aborted.")
             return 0
 
-        success = upload_sql(OUTPUT_SQL, args.batch_size)
-        if not success:
-            return 1
+    # Process each type
+    success = True
+    for stmt_type in types_to_process:
+        config = STATEMENT_TYPES[stmt_type]
+        if not process_statement_type(stmt_type, config, args):
+            success = False
+            if args.type != 'all':
+                break
 
     print()
     print("=" * 60)
-    print("COMPLETE")
+    if success:
+        print("COMPLETE")
+    else:
+        print("COMPLETED WITH ERRORS")
     print("=" * 60)
-    print(f"SQL file: {OUTPUT_SQL}")
-    if not args.sql_only:
-        print("Data uploaded to D1 successfully")
 
-    return 0
+    return 0 if success else 1
 
 
 if __name__ == "__main__":

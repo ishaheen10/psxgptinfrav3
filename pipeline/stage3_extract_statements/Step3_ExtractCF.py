@@ -34,7 +34,7 @@ CHECKPOINT_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step3_cf_checkpoint.j
 
 # DeepSeek config
 DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_EXTRACT_MODEL", "deepseek-reasoner")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_EXTRACT_MODEL", "deepseek-chat")
 MAX_RETRIES = 3
 RETRY_WAIT = 5.0
 
@@ -200,12 +200,22 @@ UNIT_TYPE: thousands | millions | rupees
 
 ## UNIT_TYPE
 
-Copy the EXACT unit from the source document header or footer:
-- "(Rupees in '000)" or "(Rs. in thousands)" → thousands
-- "(Rs. in millions)" → millions
-- "(Rupees)" with no scale indicator → rupees
+Look for scale indicators in the document header, footer, or column headers. The key word to find is the SCALE (thousand/million), not the currency.
 
-If no unit indicator is found, default to "thousands".
+**Decision rules (check in this order):**
+1. If you see "'000", "thousand", "in 000s", or "000's" anywhere → **thousands**
+2. If you see "million" or "in millions" → **millions**
+3. If you see ONLY "Rupees" or "Rs." with NO scale indicator → **rupees**
+4. If no unit indicator found → default to **thousands**
+
+**Common patterns that mean THOUSANDS:**
+- "Rupees in thousand" → thousands
+- "Rs. in '000" → thousands
+- "(Rupees in '000)" → thousands
+- "Amount in PKR '000" → thousands
+- "(Rs. '000)" → thousands
+
+**IMPORTANT**: "Rupees in thousand" means thousands, NOT rupees. The scale indicator always takes precedence over the currency name.
 
 ## SIGN CONVENTION
 
@@ -227,6 +237,14 @@ Formulas must compute correctly:
 - If a formula doesn't validate, adjust the formula (which items are included), not the values
 
 Mirror the source document's subtotal structure - don't impose a standard hierarchy.
+
+## SUBTOTAL SCOPE
+
+A subtotal's formula includes ONLY the items that belong to that subtotal's section.
+
+Cash flow statements typically start with a base figure (e.g., "Profit before taxation"), followed by adjustment items. The subtotal labeled "Adjustments" or similar sums ONLY the adjustment line items - it does NOT include the starting base figure. The base figure is combined with the adjustments subtotal at the next level (e.g., "Cash from operations before working capital changes").
+
+Match what the source document shows - if a subtotal's displayed value equals only certain rows, those are the rows in its formula.
 
 ## PERIOD COLUMNS
 
@@ -265,6 +283,13 @@ If the page contains a Cash Flow statement, extract it regardless of any consoli
 ## CANONICAL FIELDS
 
 {', '.join(cf_fields)}
+
+**IMPORTANT**: Do NOT force a match to these fields. If a line item doesn't clearly match any canonical field above, create an appropriate snake_case name that accurately describes it. Examples:
+- "Effect of exchange rate changes" → `fx_effect_on_cash`
+- "Cash from discontinued operations" → `cash_from_discontinued_ops`
+- "Dividend received from associates" → `dividend_from_associates`
+
+The goal is accurate data capture, not forcing everything into predefined buckets.
 
 ## SOURCE PAGES
 

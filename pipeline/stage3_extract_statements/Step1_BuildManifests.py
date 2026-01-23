@@ -5,9 +5,9 @@ Step 1: Build Stage 3 Manifests from V3 Extraction Manifest
 Transforms the Stage 2 extraction manifest into the format Stage 3 scripts expect.
 
 Input:  artifacts/stage2/step6_extraction_manifest.json
-Output: section_manifest.json       - Statement pages by ticker/period
-        multiyear_manifest.json     - Multi-year summary pages (for exclusion & optional extraction)
-        compensation_manifest.json  - CEO compensation pages (for optional extraction)
+Output: step1_statement_manifest.json       - Statement pages by ticker/period
+        step1_multiyear_manifest.json     - Multi-year summary pages (for Stage 4 extraction)
+        step1_compensation_manifest.json  - CEO compensation pages (for Stage 4 extraction)
 
 The V3 extraction manifest has page classifications from Stage 2.
 This script transforms that into the legacy format that Step2_ExtractStatements.py expects.
@@ -73,7 +73,7 @@ def main():
     print(f"Found {len(filings)} filings in extraction manifest")
 
     # Build output structures
-    section_manifest = defaultdict(lambda: {'annuals': {}, 'quarterlies': {}})
+    statement_manifest = defaultdict(lambda: {'annuals': {}, 'quarterlies': {}})
     multiyear_manifest = defaultdict(dict)
     compensation_manifest = defaultdict(dict)
 
@@ -108,7 +108,7 @@ def main():
         }
 
         if filing_type == 'annual':
-            section_manifest[ticker]['annuals'][period] = entry
+            statement_manifest[ticker]['annuals'][period] = entry
             stats['annuals'] += 1
 
             # Multi-year and compensation are only in annuals
@@ -126,14 +126,14 @@ def main():
                 }
                 stats['with_compensation'] += 1
         else:
-            section_manifest[ticker]['quarterlies'][period] = entry
+            statement_manifest[ticker]['quarterlies'][period] = entry
             stats['quarterlies'] += 1
 
         if statement_pages:
             stats['with_statements'] += 1
 
     # Convert defaultdicts to regular dicts for JSON serialization
-    section_manifest = {k: dict(v) for k, v in section_manifest.items()}
+    statement_manifest = {k: dict(v) for k, v in statement_manifest.items()}
     multiyear_manifest = dict(multiyear_manifest)
     compensation_manifest = dict(compensation_manifest)
 
@@ -141,12 +141,12 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # Write output files
-    section_path = OUTPUT_DIR / 'step1_section_manifest.json'
+    section_path = OUTPUT_DIR / 'step1_statement_manifest.json'
     multiyear_path = OUTPUT_DIR / 'step1_multiyear_manifest.json'
     compensation_path = OUTPUT_DIR / 'step1_compensation_manifest.json'
 
     with open(section_path, 'w') as f:
-        json.dump(section_manifest, f, indent=2)
+        json.dump(statement_manifest, f, indent=2)
 
     with open(multiyear_path, 'w') as f:
         json.dump(multiyear_manifest, f, indent=2)
@@ -159,7 +159,7 @@ def main():
     print("=" * 70)
     print("MANIFESTS CREATED")
     print("=" * 70)
-    print(f"  section_manifest.json:      {len(section_manifest)} tickers")
+    print(f"  statement_manifest.json:      {len(statement_manifest)} tickers")
     print(f"  multiyear_manifest.json:    {len(multiyear_manifest)} tickers")
     print(f"  compensation_manifest.json: {len(compensation_manifest)} tickers")
     print()

@@ -79,72 +79,39 @@ def ocr_with_gemini(gemini_client, pdf_path: Path) -> str | None:
 
     prompt = """Extract ALL text from this PDF page as clean, accurate markdown.
 
-## TABLES (CRITICAL)
+## TABLES
 
-Financial documents contain tables with numeric data. Extract them precisely:
+Financial documents contain tables with numeric data. Output tables using markdown table syntax with pipe (|) separators between columns. Do NOT output space-aligned columns without pipe separators.
 
-1. **Use proper markdown table syntax:**
-   ```
-   | Column 1 | Column 2 | Column 3 |
-   |:---|---:|---:|
-   | Row text | 1,234,567 | 2,345,678 |
-   ```
+**Critical requirements:**
+- Capture ALL columns present in the table - count them carefully before extracting
+- Every row must have values aligned to the correct columns
+- If a cell is empty, leave it empty - never shift values between columns
+- Preserve exact numeric values as shown (including commas, decimals, parentheses)
+- Extract every row including subtotals and totals
 
-2. **Column alignment is CRITICAL:**
-   - Identify column headers FIRST
-   - Track column positions - values must stay in their correct columns
-   - Don't mix up adjacent columns
-   - If a cell is empty, leave it empty (don't shift values)
+**Quarterly reports often have 4+ columns** showing both quarter and year-to-date figures:
+- Current quarter, prior year quarter, current YTD, prior year YTD
+- All columns must be captured - do not stop at 2 columns
 
-3. **Number formatting:**
-   - Preserve EXACT numeric values as shown (including commas)
-   - Don't round or modify any numbers
-   - Preserve decimal places exactly
+## MULTIPLE STATEMENTS
 
-4. **Extract EVERY row** - do not skip any rows, even if they look like subtotals
-
-## QUARTERLY REPORTS (4+ COLUMNS)
-
-Many quarterly financial reports show BOTH quarter AND year-to-date columns:
-
-| Item | Q3 Mar 2025 | Q3 Mar 2024 | 9M Mar 2025 | 9M Mar 2024 |
-|:---|---:|---:|---:|---:|
-| Revenue | 27,013,604 | 23,940,134 | 74,269,074 | 64,069,671 |
-
-- **Count ALL data columns** - there may be 4, 5, or even 6 columns
-- **Distinguish period types**: "Quarter ended" vs "Nine months ended" vs "Year ended"
-- **Extract ALL columns** - do not stop at 2 columns
-- **Fix garbled headers**: If OCR produces duplicate dates like "30 June 2024 | 30 June 2024",
-  infer correct headers from context (likely: Q3 current | Q3 prior | 9M current | 9M prior)
-
-## MULTIPLE STATEMENTS ON SAME PAGE
-
-Some pages contain multiple financial statements (e.g., Balance Sheet followed by P&L,
-or Consolidated followed by Unconsolidated). Extract ALL of them with clear headings:
-
-```
-# Statement of Financial Position
-| ... |
-
-# Statement of Profit or Loss
-| ... |
-```
+Some pages contain multiple statements (e.g., Consolidated followed by Unconsolidated).
+Extract all of them with clear headings.
 
 ## TEXT CONTENT
 
-- Preserve all headings with appropriate markdown levels (# ## ###)
-- Keep paragraph structure intact
-- Preserve dates exactly as written
-- Keep any bold/italic formatting
+- Preserve headings with appropriate markdown levels
+- Keep paragraph structure and dates exactly as written
 
-## CRITICAL RULES
+## RULES
 
-1. **Accuracy over formatting** - getting numbers right is more important than pretty output
-2. **No interpretation** - extract exactly what you see, don't summarize or rephrase
-3. **No [DATA MISSING] markers** - if you can't read something, leave it blank or use "..."
-4. **Preserve original language** - if text is in Urdu/Arabic, still extract it
+1. Accuracy over formatting - correct numbers matter more than pretty output
+2. No interpretation - extract exactly what you see
+3. No [DATA MISSING] markers - leave blank or use "..." if unreadable
+4. Preserve original language including Urdu/Arabic
 
-Return ONLY the markdown content, no explanations or commentary."""
+Return ONLY the markdown content, no explanations."""
 
     pdf_bytes = pdf_path.read_bytes()
     parts = [

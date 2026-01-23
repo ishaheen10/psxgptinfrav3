@@ -34,7 +34,7 @@ CHECKPOINT_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step3_bs_checkpoint.j
 
 # DeepSeek config
 DEEPSEEK_API_BASE = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_EXTRACT_MODEL", "deepseek-reasoner")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_EXTRACT_MODEL", "deepseek-chat")
 MAX_RETRIES = 3
 RETRY_WAIT = 5.0
 
@@ -185,12 +185,22 @@ UNIT_TYPE: thousands | millions | rupees
 
 ## UNIT_TYPE
 
-Copy the EXACT unit from the source document header or footer:
-- "(Rupees in '000)" or "(Rs. in thousands)" → thousands
-- "(Rs. in millions)" → millions
-- "(Rupees)" with no scale indicator → rupees
+Look for scale indicators in the document header, footer, or column headers. The key word to find is the SCALE (thousand/million), not the currency.
 
-If no unit indicator is found, default to "thousands".
+**Decision rules (check in this order):**
+1. If you see "'000", "thousand", "in 000s", or "000's" anywhere → **thousands**
+2. If you see "million" or "in millions" → **millions**
+3. If you see ONLY "Rupees" or "Rs." with NO scale indicator → **rupees**
+4. If no unit indicator found → default to **thousands**
+
+**Common patterns that mean THOUSANDS:**
+- "Rupees in thousand" → thousands
+- "Rs. in '000" → thousands
+- "(Rupees in '000)" → thousands
+- "Amount in PKR '000" → thousands
+- "(Rs. '000)" → thousands
+
+**IMPORTANT**: "Rupees in thousand" means thousands, NOT rupees. The scale indicator always takes precedence over the currency name.
 
 ## SIGN CONVENTION
 
@@ -216,6 +226,12 @@ Formulas must compute correctly:
 - If a formula doesn't validate, adjust the formula (which items are included), not the values
 
 Mirror the source document's subtotal structure - don't impose a standard hierarchy.
+
+## EQUITY FORMULA RULES
+
+- **Authorized share capital** is a disclosure-only memo item showing maximum allowed shares - it is NOT part of actual equity. Only issued/paid-up capital counts.
+- **Revaluation surplus** may be presented separately from equity in Pakistani format. Follow the source structure.
+- Your formula must produce the exact total shown in the source. If components don't add up, adjust which items are included in the formula.
 
 ## DATE COLUMNS
 
@@ -248,6 +264,13 @@ If the page contains a Balance Sheet, extract it regardless of any consolidation
 ## CANONICAL FIELDS
 
 {', '.join(bs_fields)}
+
+**IMPORTANT**: Do NOT force a match to these fields. If a line item doesn't clearly match any canonical field above, create an appropriate snake_case name that accurately describes it. Examples:
+- "Right-of-use assets" → `right_of_use_assets`
+- "Contract liabilities" → `contract_liabilities`
+- "Lease liabilities - current" → `lease_liabilities_current`
+
+The goal is accurate data capture, not forcing everything into predefined buckets.
 
 ## SOURCE PAGES
 

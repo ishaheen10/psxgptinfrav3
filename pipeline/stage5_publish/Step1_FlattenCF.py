@@ -1,46 +1,48 @@
 #!/usr/bin/env python3
 """
-Step 1: Flatten P&L Data for D1 Upload
+Step 1: Flatten Cash Flow Data for D1 Upload
 
 Reads BOTH:
-1. Derived quarterly P&L data (3M periods) from quarterly_pl/
-2. Cumulative periods (6M, 9M, 12M) from json_pl/
+1. Derived quarterly CF data (3M periods) from quarterly_cf/
+2. Cumulative periods (6M, 9M, 12M) from json_cf/
 
 This preserves ALL period durations for complete coverage.
 
-Input:  data/quarterly_pl/*.json (3M quarters)
-        data/json_pl/*.json (cumulative periods)
-Output: artifacts/stage4/pl_flat.jsonl
+Input:  data/quarterly_cf/*.json (3M quarters)
+        data/json_cf/*.json (cumulative periods)
+Output: artifacts/stage4/cf_flat.jsonl
 
 Usage:
-    python3 Step1_FlattenPL.py
-    python3 Step1_FlattenPL.py --ticker LUCK
+    python3 Step1_FlattenCF.py
+    python3 Step1_FlattenCF.py --ticker LUCK
 """
 
 import argparse
 import json
+import re
 from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-QUARTERLY_PL_DIR = PROJECT_ROOT / "data" / "quarterly_pl"
-JSON_PL_DIR = PROJECT_ROOT / "data" / "json_pl"
+QUARTERLY_CF_DIR = PROJECT_ROOT / "data" / "quarterly_cf"
+JSON_CF_DIR = PROJECT_ROOT / "data" / "json_cf"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "flat"
-OUTPUT_FILE = OUTPUT_DIR / "pl.jsonl"
+OUTPUT_FILE = OUTPUT_DIR / "cf.jsonl"
 
 # Source page manifest (specific pages per statement type)
 STATEMENT_PAGES_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step2_statement_pages.json"
 PDF_BASE_URL = "https://source.psxgpt.com/PDF_PAGES"
 
 # QC issues file for flagging risky values
-QC_ISSUES_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step7_qc_issues.json"
+QC_ISSUES_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step6_qc_cf_results.json"
 
 # Arithmetic allowlist file (manually reviewed exceptions)
-ARITHMETIC_ALLOWLIST_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step7_arithmetic_allowlist.json"
+ARITHMETIC_ALLOWLIST_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step7_arithmetic_allowlist_cf.json"
 
-# Fields that should never be negative
-NON_NEGATIVE_FIELDS = {'revenue_net', 'gross_revenue', 'dividend_income', 'interest_income'}
+# Fields that should never be negative for Cash Flow
+# Note: Most CF items CAN be negative (outflows), but cash balances should be positive
+NON_NEGATIVE_FIELDS = {'cash_start', 'cash_end', 'cash_and_equivalents'}
 
 # Load ticker metadata
 TICKERS_FILE = PROJECT_ROOT / "tickers100.json"
@@ -58,19 +60,16 @@ if STATEMENT_PAGES_FILE.exists():
         STATEMENT_PAGES = json.load(f)
 
 # Load QC issues for flagging
-# Structure: {(ticker, period_end, section): [issue_descriptions]}
+# Structure: {ticker: [semantic_failures]}
 QC_ISSUE_LOOKUP = {}
 if QC_ISSUES_FILE.exists():
     with open(QC_ISSUES_FILE) as f:
         qc_data = json.load(f)
-    for issue in qc_data.get('issues', []):
-        ticker = issue.get('ticker', '')
-        period = issue.get('period_end', '')
-        section = issue.get('consolidation', 'consolidated')
-        key = (ticker, period, section)
-        if key not in QC_ISSUE_LOOKUP:
-            QC_ISSUE_LOOKUP[key] = []
-        QC_ISSUE_LOOKUP[key].append(issue.get('issue', 'qc_issue'))
+    # CF QC results have semantic failures at ticker level
+    for result in qc_data.get('results', []):
+        ticker = result.get('ticker', '')
+        if result.get('checks', {}).get('semantic', {}).get('failed', 0) > 0:
+            QC_ISSUE_LOOKUP[ticker] = 'semantic_equation_failure'
 
 # Load arithmetic allowlist for qc_note
 # Structure: {(ticker, fiscal_year, consolidation): reason}
@@ -83,20 +82,15 @@ if ARITHMETIC_ALLOWLIST_FILE.exists():
         ALLOWLIST_LOOKUP[key] = item.get('reason', 'Manually reviewed')
 
 
-def normalize_value(value: float, unit_type: str, canonical: str = None) -> float:
+def normalize_value(value: float, unit_type: str) -> float:
     """
     Normalize a value to thousands.
     - rupees: divide by 1000
     - millions: multiply by 1000
     - thousands: keep as is
-    - Skip normalization for EPS fields (always in rupees per share)
     """
     if value is None:
         return None
-
-    # Skip normalization for EPS (always in rupees per share)
-    if canonical and 'eps' in canonical.lower():
-        return value
 
     unit_lower = unit_type.lower().strip() if unit_type else 'thousands'
 
@@ -113,7 +107,7 @@ def normalize_value(value: float, unit_type: str, canonical: str = None) -> floa
 
 def get_qc_flag(ticker: str, period_end: str, section: str, field: str, value: float, method: str, fiscal_year: int) -> str:
     """
-    Determine QC risk flag for a value, including explanation if available.
+    Determine QC risk flag for a cash flow value, including explanation if available.
 
     Returns:
         - 'derivation_anomaly: <reason>' or just 'derivation_anomaly'
@@ -154,9 +148,8 @@ def get_source_info_from_source(ticker: str, source: str, section: str) -> dict:
     - A derivation description like "6M (AABS_quarterly_2021-06-30_consolidated.md) - Q1"
     """
     # Extract the primary source file from the source string
-    if source and '.md' in source:
+    if '.md' in source:
         # Find the first .md file mentioned
-        import re
         match = re.search(r'([A-Z0-9]+_(annual|quarterly)_[\d-]+_\w+)\.md', source)
         if match:
             filename = match.group(1)
@@ -182,7 +175,7 @@ def get_source_info_from_source(ticker: str, source: str, section: str) -> dict:
                 if period_key in ticker_data:
                     period_data = ticker_data[period_key]
                     if section in period_data:
-                        pages = period_data[section].get('PL', [])
+                        pages = period_data[section].get('CF', [])
 
             return {
                 'source_pages': pages,
@@ -193,7 +186,7 @@ def get_source_info_from_source(ticker: str, source: str, section: str) -> dict:
 
 
 def parse_quarterly_file(filepath: Path) -> list[dict]:
-    """Parse a quarterly_pl JSON file and return list of row dicts."""
+    """Parse a quarterly_cf JSON file and return list of row dicts."""
     rows = []
 
     with open(filepath) as f:
@@ -224,20 +217,20 @@ def parse_quarterly_file(filepath: Path) -> list[dict]:
             # Use source_labels for original_name if available, else fall back to canonical
             original_name = source_labels.get(canonical_field, canonical_field)
 
-            # Get QC risk flag (includes explanation if allowlisted)
+            # Get QC flag
             qc_flag = get_qc_flag(ticker, period_end, section, canonical_field, value, method, fiscal_year)
 
             row = {
                 "ticker": ticker,
                 "company_name": company_name,
                 "industry": industry,
-                "unit_type": "thousands",  # quarterly_pl is already normalized
+                "unit_type": "thousands",  # quarterly_cf is already normalized
                 "period_type": "quarterly",
                 "period_end": period_end,
                 "period_duration": "3M",
                 "fiscal_year": fiscal_year,
                 "section": section,
-                "statement_type": "profit_loss",
+                "statement_type": "cash_flow",
                 "canonical_field": canonical_field,
                 "original_name": original_name,
                 "value": value,
@@ -255,27 +248,18 @@ def parse_quarterly_file(filepath: Path) -> list[dict]:
 def get_fiscal_year(period_end: str, duration: str) -> int:
     """
     Derive fiscal year from period_end and duration.
-    For 12M periods ending in Jun, fiscal year is same year.
-    For quarterly periods, fiscal year depends on fiscal year-end month.
     """
     try:
         date = datetime.strptime(period_end, '%Y-%m-%d')
-        # For simplicity, assume June fiscal year end for most companies
-        # The actual fiscal year is derived in quarterly_pl, but for cumulative
-        # periods we approximate based on the period end date
-        if duration == '12M':
-            return date.year
-        else:
-            # For 6M/9M, approximate fiscal year
-            return date.year
+        return date.year
     except:
         return int(period_end[:4])
 
 
-def parse_json_pl_file(filepath: Path) -> list[dict]:
+def parse_json_cf_file(filepath: Path) -> list[dict]:
     """
-    Parse a json_pl JSON file and return list of row dicts for CUMULATIVE periods only (6M, 9M, 12M).
-    3M periods are handled by quarterly_pl which has better derivation.
+    Parse a json_cf JSON file and return list of row dicts for CUMULATIVE periods only (6M, 9M, 12M).
+    3M periods are handled by quarterly_cf which has better derivation.
     """
     rows = []
 
@@ -290,7 +274,7 @@ def parse_json_pl_file(filepath: Path) -> list[dict]:
     for period in data.get('periods', []):
         duration = period.get('duration', '')
 
-        # Skip 3M - those come from quarterly_pl with better derivation
+        # Skip 3M - those come from quarterly_cf with better derivation
         if duration == '3M':
             continue
 
@@ -300,12 +284,12 @@ def parse_json_pl_file(filepath: Path) -> list[dict]:
 
         period_end = period['period_end']
         section = period['consolidation']
-        source_file = period.get('source_file', '')
+        source_filing = period.get('source_filing', '')
         values = period.get('values', {})
         source_labels = period.get('source_labels', {})
         unit_type = period.get('unit_type', 'thousands')  # Get original unit
 
-        # Get source info directly from json_pl (already has source_pages)
+        # Get source info directly from json_cf (already has source_pages)
         source_pages = period.get('source_pages', [])
         source_url = period.get('source_url', '')
 
@@ -318,26 +302,17 @@ def parse_json_pl_file(filepath: Path) -> list[dict]:
         fiscal_year = get_fiscal_year(period_end, duration)
 
         # Each field becomes a row
-        for canonical_field, value_data in values.items():
-            if value_data is None:
-                continue
-
-            # Handle V2 format: values are dicts with {value, source_item, ref, is_calculated}
-            if isinstance(value_data, dict):
-                raw_value = value_data.get('value')
-                original_name = value_data.get('source_item', canonical_field)
-            else:
-                # Fallback for V1 format (plain floats)
-                raw_value = value_data
-                original_name = source_labels.get(canonical_field, canonical_field)
-
+        for canonical_field, raw_value in values.items():
             if raw_value is None:
                 continue
 
             # Normalize value to thousands
-            value = normalize_value(raw_value, unit_type, canonical_field)
+            value = normalize_value(raw_value, unit_type)
 
-            # Get QC risk flag (includes explanation if allowlisted)
+            # Use source_labels for original_name if available, else fall back to canonical
+            original_name = source_labels.get(canonical_field, canonical_field)
+
+            # Get QC flag (cumulative periods use 'direct' method)
             qc_flag = get_qc_flag(ticker, period_end, section, canonical_field, value, 'direct', fiscal_year)
 
             row = {
@@ -350,12 +325,12 @@ def parse_json_pl_file(filepath: Path) -> list[dict]:
                 "period_duration": duration,
                 "fiscal_year": fiscal_year,
                 "section": section,
-                "statement_type": "profit_loss",
+                "statement_type": "cash_flow",
                 "canonical_field": canonical_field,
                 "original_name": original_name,
                 "value": value,
                 "method": "direct",  # Cumulative periods are direct from source
-                "source_file": source_file,
+                "source_file": source_filing,
                 "source_pages": source_pages,
                 "source_url": source_url,
                 "qc_flag": qc_flag
@@ -366,26 +341,26 @@ def parse_json_pl_file(filepath: Path) -> list[dict]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Flatten P&L data for D1")
+    parser = argparse.ArgumentParser(description="Flatten Cash Flow data for D1")
     parser.add_argument("--ticker", help="Process single ticker only")
     args = parser.parse_args()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # Get all quarterly JSON files (for 3M periods)
-    quarterly_files = sorted(QUARTERLY_PL_DIR.glob("*.json"))
+    quarterly_files = sorted(QUARTERLY_CF_DIR.glob("*.json"))
 
-    # Get all json_pl files (for cumulative periods: 6M, 9M, 12M)
-    json_pl_files = sorted(JSON_PL_DIR.glob("*.json"))
+    # Get all json_cf files (for cumulative periods: 6M, 9M, 12M)
+    json_cf_files = sorted(JSON_CF_DIR.glob("*.json"))
 
     # Filter by ticker if specified
     if args.ticker:
         quarterly_files = [f for f in quarterly_files if f.stem == args.ticker]
-        json_pl_files = [f for f in json_pl_files if f.stem == args.ticker]
+        json_cf_files = [f for f in json_cf_files if f.stem == args.ticker]
 
-    print(f"Flattening P&L data...")
-    print(f"  3M periods from:  {QUARTERLY_PL_DIR} ({len(quarterly_files)} files)")
-    print(f"  Cumulative from:  {JSON_PL_DIR} ({len(json_pl_files)} files)")
+    print(f"Flattening Cash Flow data...")
+    print(f"  3M periods from:  {QUARTERLY_CF_DIR} ({len(quarterly_files)} files)")
+    print(f"  Cumulative from:  {JSON_CF_DIR} ({len(json_cf_files)} files)")
     print(f"  Output: {OUTPUT_FILE}")
     print()
 
@@ -394,10 +369,9 @@ def main():
     field_stats = defaultdict(int)
     ticker_stats = defaultdict(int)
     duration_stats = defaultdict(int)
-    qc_flag_stats = defaultdict(int)
 
     # Process quarterly files for 3M periods
-    print("Processing 3M periods from quarterly_pl...")
+    print("Processing 3M periods from quarterly_cf...")
     quarterly_count = 0
     for filepath in quarterly_files:
         rows = parse_quarterly_file(filepath)
@@ -409,20 +383,22 @@ def main():
 
     print(f"  Loaded {quarterly_count} tickers with 3M periods")
 
-    # Process json_pl files for cumulative periods (6M, 9M, 12M)
-    print("Processing cumulative periods from json_pl...")
-    json_pl_count = 0
-    for filepath in json_pl_files:
-        rows = parse_json_pl_file(filepath)
+    # Process json_cf files for cumulative periods (6M, 9M, 12M)
+    print("Processing cumulative periods from json_cf...")
+    json_cf_count = 0
+    for filepath in json_cf_files:
+        rows = parse_json_cf_file(filepath)
         if rows:
             all_rows.extend(rows)
-            json_pl_count += 1
+            json_cf_count += 1
             for row in rows:
                 duration_stats[row['period_duration']] += 1
 
-    print(f"  Loaded {json_pl_count} tickers with cumulative periods")
+    print(f"  Loaded {json_cf_count} tickers with cumulative periods")
 
     # Write rows
+    qc_flag_stats = defaultdict(int)
+
     with open(OUTPUT_FILE, 'w') as out:
         for row in all_rows:
             out.write(json.dumps(row) + "\n")

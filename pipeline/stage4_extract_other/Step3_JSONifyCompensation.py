@@ -3,10 +3,10 @@
 Step 3: JSONify Compensation
 
 Convert compensation markdown to structured JSON for database upload.
-Uses compensation_manifest.json to link source pages.
+Uses step1_compensation_manifest.json to link source pages.
 
 Input:  data/extracted_compensation/*.md
-        artifacts/stage3/compensation_manifest.json
+        artifacts/stage3/step1_compensation_manifest.json
 Output: data/json_compensation/management_comp.jsonl
 """
 
@@ -24,7 +24,7 @@ TICKER_TO_INDUSTRY = {t['Symbol']: t['Industry'] for t in tickers_data}
 TICKER_TO_COMPANY = {t['Symbol']: t['Company Name'] for t in tickers_data}
 
 INPUT_DIR = PROJECT_ROOT / 'data' / 'extracted_compensation'
-MANIFEST_FILE = PROJECT_ROOT / 'artifacts' / 'stage3' / 'compensation_manifest.json'
+MANIFEST_FILE = PROJECT_ROOT / 'artifacts' / 'stage3' / 'step1_compensation_manifest.json'
 OUTPUT_FILE = PROJECT_ROOT / 'data' / 'json_compensation' / 'management_comp.jsonl'
 
 # Load manifest for source page linking

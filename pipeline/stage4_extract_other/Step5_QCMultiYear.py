@@ -7,7 +7,7 @@ Uses manifest to get the actual source pages, then checks if
 extracted values appear in those pages.
 
 Input:  data/json_multiyear/multi_year_normalized.jsonl
-        artifacts/stage3/multiyear_manifest.json
+        artifacts/stage3/step1_multiyear_manifest.json
         markdown_pages/
 Output: artifacts/stage4/step5_multiyear_qc.json
 """
@@ -19,7 +19,7 @@ from collections import Counter, defaultdict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 INPUT_FILE = PROJECT_ROOT / "data" / "json_multiyear" / "multi_year_normalized.jsonl"
-MANIFEST_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "multiyear_manifest.json"
+MANIFEST_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step1_multiyear_manifest.json"
 MARKDOWN_PAGES = PROJECT_ROOT / "markdown_pages"
 OUTPUT_FILE = PROJECT_ROOT / "artifacts" / "stage4" / "step5_multiyear_qc.json"
 

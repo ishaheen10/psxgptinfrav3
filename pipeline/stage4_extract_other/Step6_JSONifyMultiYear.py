@@ -3,10 +3,10 @@
 Step 6: JSONify Multi-Year
 
 Convert multi-year markdown to structured JSON for database upload.
-Uses multiyear_manifest.json to link source pages.
+Uses step1_multiyear_manifest.json to link source pages.
 
 Input:  data/extracted_multiyear/*.md
-        artifacts/stage3/multiyear_manifest.json
+        artifacts/stage3/step1_multiyear_manifest.json
 Output: data/json_multiyear/multi_year_normalized.jsonl
 """
 
@@ -25,7 +25,7 @@ TICKER_TO_INDUSTRY = {t['Symbol']: t['Industry'] for t in tickers_data}
 TICKER_TO_COMPANY = {t['Symbol']: t['Company Name'] for t in tickers_data}
 
 INPUT_DIR = PROJECT_ROOT / 'data' / 'extracted_multiyear'
-MANIFEST_FILE = PROJECT_ROOT / 'artifacts' / 'stage3' / 'multiyear_manifest.json'
+MANIFEST_FILE = PROJECT_ROOT / 'artifacts' / 'stage3' / 'step1_multiyear_manifest.json'
 OUTPUT_FILE = PROJECT_ROOT / 'data' / 'json_multiyear' / 'multi_year_normalized.jsonl'
 
 # Current year for filtering bad parses

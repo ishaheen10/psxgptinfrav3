@@ -152,6 +152,8 @@ def main():
     parser = argparse.ArgumentParser(description="Upload files to R2")
     parser.add_argument("--sync", action="store_true",
                         help="Rebuild manifest from R2 before uploading")
+    parser.add_argument("--ticker", type=str,
+                        help="Only upload files for a specific ticker (e.g., EFERT)")
     args = parser.parse_args()
 
     logger.info("=" * 70)
@@ -179,8 +181,14 @@ def main():
     all_tasks = []
     for local_dir, prefix, exts, ctype in UPLOAD_SETS:
         tasks = prepare_upload_tasks(local_dir, prefix, exts)
+        # Filter by ticker if specified
+        if args.ticker:
+            tasks = [(p, key) for (p, key) in tasks if f"/{args.ticker}/" in str(p)]
         tasks = [(p, key, ctype) for (p, key) in tasks]
         all_tasks.extend(tasks)
+
+    if args.ticker:
+        logger.info(f"Filtering for ticker: {args.ticker}")
 
     logger.info(f"Total files to check/upload: {len(all_tasks)}")
 

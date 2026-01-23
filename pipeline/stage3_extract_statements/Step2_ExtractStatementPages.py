@@ -5,7 +5,7 @@ Step 2: Extract Statement Page Numbers
 Reads the full content of pages tagged as 'statement' and identifies which pages
 contain which statement types (P&L, BS, CF) for Consolidated/Unconsolidated.
 
-Input:  artifacts/stage3/step1_section_manifest.json
+Input:  artifacts/stage3/step1_statement_manifest.json
 Output: artifacts/stage3/step2_statement_pages.json
 
 Format:
@@ -28,12 +28,12 @@ from openai import OpenAI
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 MARKDOWN_DIR = PROJECT_ROOT / "markdown_pages"
-SECTION_MANIFEST = PROJECT_ROOT / "artifacts" / "stage3" / "step1_section_manifest.json"
+STATEMENT_MANIFEST = PROJECT_ROOT / "artifacts" / "stage3" / "step1_statement_manifest.json"
 OUTPUT_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step2_statement_pages.json"
 
-def load_section_manifest() -> dict:
-    """Load section manifest from Step 1."""
-    with open(SECTION_MANIFEST) as f:
+def load_statement_manifest() -> dict:
+    """Load statement manifest from Step 1."""
+    with open(STATEMENT_MANIFEST) as f:
         return json.load(f)
 
 
@@ -142,7 +142,7 @@ def main():
     print("STEP 2: EXTRACT STATEMENT PAGE NUMBERS")
     print("=" * 70)
 
-    manifest = load_section_manifest()
+    manifest = load_statement_manifest()
 
     # Build work queue
     work_items = []

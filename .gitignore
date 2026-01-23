@@ -41,6 +41,7 @@ artifacts/
 markdown_pages
 pdf_pages
 database_pdfs
+pdf_thumbnails
 
 # Lock files (optional - uncomment to track)
 # uv.lock

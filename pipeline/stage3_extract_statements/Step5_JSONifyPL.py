@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-Step 5: JSONify P&L Extractions with Best-Source Selection
+Step 5: JSONify P&L Extractions (QC-Optimized Structure)
 
-Converts extracted_pl markdown files to JSON with:
-1. Period normalization (e.g., "3M Mar 2024" -> "2024-03-31")
-2. Multi-filing deduplication: prefer latest filing that passes QC
-3. Source tracing: each period records which filing it came from
+Converts extracted_pl markdown files to JSON optimized for QC lookups:
+- Each period as an object with period_end, duration, consolidation
+- Values keyed by canonical name for easy lookup
+- source_item preserved for each value
+- Includes source file and QC status
 
 Input:  data/extracted_pl/*.md
-        artifacts/stage3/step4a_qc_results.json
 Output: data/json_pl/{TICKER}.json
 
 Usage:
-    python3 Step5_JSONify.py                    # Process all
-    python3 Step5_JSONify.py --ticker ABL       # Single ticker
-    python3 Step5_JSONify.py --verbose          # Show details
+    python3 Step5_JSONifyPL.py                    # Process all
+    python3 Step5_JSONifyPL.py --ticker ABL       # Single ticker
+    python3 Step5_JSONifyPL.py --verbose          # Show details
 """
 
 import argparse
@@ -27,7 +27,16 @@ from datetime import datetime
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 INPUT_DIR = PROJECT_ROOT / "data" / "extracted_pl"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "json_pl"
-QC_RESULTS_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step4_qc_results.json"
+QC_RESULTS_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step4_qc_pl_extraction.json"
+STATEMENT_PAGES_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step2_statement_pages.json"
+PDF_BASE_URL = "https://source.psxgpt.com/PDF_PAGES"
+
+# Load statement pages manifest
+STATEMENT_PAGES = {}
+if STATEMENT_PAGES_FILE.exists():
+    with open(STATEMENT_PAGES_FILE) as f:
+        STATEMENT_PAGES = json.load(f)
+
 
 # Month name to number mapping
 MONTH_MAP = {
@@ -50,109 +59,6 @@ MONTH_DAYS = {
     1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30,
     7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31
 }
-
-# Standard unit for output (all values normalized to thousands)
-STANDARD_UNIT = "thousands"
-
-# Thresholds for cross-period consistency check
-SCALE_MISMATCH_THRESHOLD_HIGH = 100  # If value > 100x median, likely wrong unit
-SCALE_MISMATCH_THRESHOLD_LOW = 0.01  # If value < 0.01x median, likely wrong unit
-
-
-def normalize_value(value: float, unit_type: str, canonical: str) -> float:
-    """
-    Normalize a value to thousands.
-    - rupees/Rupees: divide by 1000
-    - millions: multiply by 1000
-    - thousands: keep as is
-    - Skip normalization for EPS fields
-    """
-    if value is None:
-        return None
-
-    # Skip normalization for EPS (always in rupees per share)
-    if canonical and 'eps' in canonical.lower():
-        return value
-
-    unit_lower = unit_type.lower().strip()
-
-    # Handle various unit formats
-    if unit_lower in ('rupees', 'rupee'):
-        return value / 1000.0
-    elif unit_lower == 'millions':
-        return value * 1000.0
-    elif 'thousands' in unit_lower:
-        return value  # Already in thousands
-    else:
-        # Unknown unit, assume rupees (most raw values are in rupees)
-        # But if values are small (< 100), they might already be in millions
-        # If very large (> 1 billion), they're likely rupees
-        if abs(value) > 1_000_000_000:  # > 1 billion, likely rupees
-            return value / 1000.0
-        return value  # Assume already normalized
-
-
-def apply_cross_period_normalization(periods: list[dict], verbose: bool = False) -> int:
-    """
-    Detect and fix scale mismatches across periods for the same ticker.
-
-    Uses revenue_net as the reference metric. If a period's revenue is way off
-    from the median (>100x or <0.01x), it's likely in the wrong unit and we
-    apply a correction factor to ALL values in that period.
-
-    Returns number of periods corrected.
-    """
-    corrections = 0
-
-    # Group periods by consolidation type
-    by_consolidation = defaultdict(list)
-    for p in periods:
-        by_consolidation[p['consolidation']].append(p)
-
-    for cons_type, cons_periods in by_consolidation.items():
-        # Get revenue values (excluding None/0)
-        revenues = []
-        for p in cons_periods:
-            rev = p['values'].get('revenue_net')
-            if rev and abs(rev) > 0:
-                revenues.append((p, rev))
-
-        if len(revenues) < 2:
-            continue
-
-        # Calculate median revenue
-        rev_values = sorted([r[1] for r in revenues])
-        median_rev = rev_values[len(rev_values) // 2]
-
-        if median_rev == 0:
-            continue
-
-        # Check each period for scale mismatch
-        for period, rev in revenues:
-            ratio = abs(rev / median_rev)
-
-            correction_factor = None
-
-            if ratio > SCALE_MISMATCH_THRESHOLD_HIGH:
-                # Value is too large - divide by 1000
-                correction_factor = 1.0 / 1000.0
-                if verbose:
-                    print(f"    SCALE FIX: {cons_type} {period['period_end']} - revenue {rev:,.0f} is {ratio:.0f}x median, dividing by 1000")
-            elif ratio < SCALE_MISMATCH_THRESHOLD_LOW:
-                # Value is too small - multiply by 1000
-                correction_factor = 1000.0
-                if verbose:
-                    print(f"    SCALE FIX: {cons_type} {period['period_end']} - revenue {rev:,.0f} is {ratio:.4f}x median, multiplying by 1000")
-
-            if correction_factor:
-                # Apply correction to ALL values in this period (except EPS)
-                for canonical, value in period['values'].items():
-                    if value is not None and 'eps' not in canonical.lower():
-                        period['values'][canonical] = value * correction_factor
-                corrections += 1
-
-    return corrections
-
 
 def parse_period_column(col: str) -> dict | None:
     """
@@ -181,6 +87,7 @@ def parse_period_column(col: str) -> dict | None:
 
         return {
             'duration': duration,
+            'duration_months': int(match.group(1)),
             'month': match.group(2),
             'year': year,
             'period_end': period_end,
@@ -257,7 +164,7 @@ def parse_markdown_file(filepath: Path) -> dict | None:
     result = {
         'unit_type': 'thousands',  # default
         'periods': [],  # List of period info dicts
-        'rows': [],  # List of {canonical, source, ref, values: {period_end: value}}
+        'rows': [],  # List of {canonical, source, ref, formula, values: {period_key: value}}
     }
 
     # Parse header for unit type
@@ -281,7 +188,12 @@ def parse_markdown_file(filepath: Path) -> dict | None:
             continue
 
         parts = [p.strip() for p in line.split('|')]
-        parts = [p for p in parts if p]  # Remove empty parts
+        # Remove leading/trailing empty parts from pipe separators, but keep middle empties
+        # "| A | | B |" -> ['', 'A', '', 'B', ''] -> ['A', '', 'B']
+        if parts and parts[0] == '':
+            parts = parts[1:]
+        if parts and parts[-1] == '':
+            parts = parts[:-1]
 
         if not in_table:
             # This is the header row
@@ -301,7 +213,7 @@ def parse_markdown_file(filepath: Path) -> dict | None:
 
         source_item = parts[0].replace('**', '')
         canonical = parts[1].replace('**', '')
-        ref = parts[2].replace('**', '')
+        ref_raw = parts[2].replace('**', '')
 
         # Skip header-like rows
         if 'Source Item' in source_item or 'Canonical' in canonical:
@@ -311,24 +223,31 @@ def parse_markdown_file(filepath: Path) -> dict | None:
         if not canonical or canonical.strip() == '':
             continue
 
+        # Parse ref for formula
+        ref_name = ref_raw
+        formula = None
+        if '=' in ref_raw:
+            ref_parts = ref_raw.split('=', 1)
+            ref_name = ref_parts[0].strip()
+            formula = ref_parts[1].strip()
+
         # Parse values for each period
-        # Key by (period_end, duration) to handle multiple durations for same date
-        # e.g., both "3M Jun 2022" and "6M Jun 2022" have period_end "2022-06-30"
         values = {}
         for i, period_info in enumerate(result['periods']):
             col_idx = 3 + i
             if col_idx < len(parts):
                 val = parse_number(parts[col_idx])
                 if val is not None:
-                    # Use tuple key (period_end, duration) to preserve both values
                     key = (period_info['period_end'], period_info['duration'])
                     values[key] = val
 
         if values:  # Only add rows with at least one value
             result['rows'].append({
                 'canonical': canonical,
-                'source': source_item,
-                'ref': ref,
+                'source_item': source_item,
+                'ref': ref_name,
+                'formula': formula,
+                'is_calculated': formula is not None,
                 'values': values,
             })
 
@@ -336,7 +255,7 @@ def parse_markdown_file(filepath: Path) -> dict | None:
 
 
 def load_qc_results() -> dict:
-    """Load QC results and return dict of filename -> pass/fail."""
+    """Load QC results and return dict of filename -> status."""
     qc_status = {}
 
     if not QC_RESULTS_FILE.exists():
@@ -346,15 +265,13 @@ def load_qc_results() -> dict:
     with open(QC_RESULTS_FILE) as f:
         data = json.load(f)
 
-    for result in data.get('results', []):
+    # QC results file has 'files' list with per-file results
+    for result in data.get('files', []):
         filename = result['file']
         status = result.get('status', 'unknown')
-        # Map status to qc_status
         if status == 'pass':
             qc_status[filename] = 'pass'
-        elif status == 'exception':
-            qc_status[filename] = 'pass'  # Treat exceptions as pass
-        elif result.get('formula_total', 0) == 0:
+        elif result.get('formulas', 0) == 0:
             qc_status[filename] = 'no_formulas'
         else:
             qc_status[filename] = 'fail'
@@ -371,8 +288,6 @@ def is_current_period(candidate: dict) -> bool:
 
     This helps avoid using restated prior-year values from newer filings.
     """
-    from datetime import datetime
-
     try:
         period_end = datetime.strptime(candidate['period_end'], '%Y-%m-%d')
         filing_date = datetime.strptime(candidate['filing_date'], '%Y-%m-%d')
@@ -392,54 +307,146 @@ def select_best_source(candidates: list[dict], qc_status: dict) -> dict:
     Given multiple candidates for the same period, select the best one.
 
     Preference order:
-    1. Current period from original filing (not restated prior-year from newer filing)
-    2. Passes QC
-    3. Latest filing date
+    1. Current period that passes QC (with taxation data preferred)
+    2. Prior-year comparison that passes QC (if current fails) - labeled as fallback
+    3. Current period (even if failing) as last resort
 
-    Each candidate has: filename, filing_date, period_end, duration, rows
+    Each candidate has: period_end, duration, consolidation, filing_date, source_file, values, etc.
     """
     if len(candidates) == 1:
-        return candidates[0]
+        best = candidates[0]
+        best['source_type'] = 'primary' if is_current_period(best) else 'prior_year'
+        return best
 
     # Separate into current period vs prior-year comparison
     current_period = [c for c in candidates if is_current_period(c)]
     prior_year = [c for c in candidates if not is_current_period(c)]
 
-    # Prefer current period sources
-    if current_period:
-        # Sort by filing date descending within current period candidates
-        current_sorted = sorted(current_period, key=lambda x: x['filing_date'], reverse=True)
+    def passes_qc(c):
+        """Check if candidate passes QC."""
+        status = qc_status.get(c.get('source_file', ''), 'unknown')
+        return status in ('pass', 'no_formulas')
 
-        # First try to find a passing one
-        for c in current_sorted:
-            status = qc_status.get(c['filename'], 'unknown')
-            if status in ('pass', 'no_formulas'):
-                return c
+    def score_candidate(c):
+        """Score a candidate - higher is better."""
+        score = 0
+        # Prefer candidates with taxation data
+        if c.get('values', {}).get('taxation', {}).get('value') is not None:
+            score += 100
+        # Prefer QC pass
+        if passes_qc(c):
+            score += 50
+        return score
 
-        # If none pass, return the latest current period one
-        return current_sorted[0]
+    # Sort both lists by score then filing date
+    current_sorted = sorted(current_period,
+                            key=lambda x: (score_candidate(x), x.get('filing_date', '')),
+                            reverse=True) if current_period else []
+    prior_sorted = sorted(prior_year,
+                          key=lambda x: (score_candidate(x), x.get('filing_date', '')),
+                          reverse=True) if prior_year else []
 
-    # Fall back to prior-year sources if no current period available
-    prior_sorted = sorted(prior_year, key=lambda x: x['filing_date'], reverse=True)
+    # 1. First choice: current period that passes QC
+    current_passing = [c for c in current_sorted if passes_qc(c)]
+    if current_passing:
+        best = current_passing[0]
+        best['source_type'] = 'primary'
+        return best
 
-    for c in prior_sorted:
-        status = qc_status.get(c['filename'], 'unknown')
-        if status in ('pass', 'no_formulas'):
-            return c
+    # 2. Second choice: prior-year that passes QC (if no current passes)
+    prior_passing = [c for c in prior_sorted if passes_qc(c)]
+    if prior_passing:
+        best = prior_passing[0]
+        best['source_type'] = 'prior_year_fallback'  # Label as fallback
+        return best
 
-    return prior_sorted[0]
+    # 3. Last resort: best current period even if failing
+    if current_sorted:
+        best = current_sorted[0]
+        best['source_type'] = 'primary'
+        return best
+
+    # 4. Final fallback: any prior year
+    if prior_sorted:
+        best = prior_sorted[0]
+        best['source_type'] = 'prior_year_fallback'
+        return best
+
+    # Should never reach here
+    return candidates[0]
+
+
+def get_source_pages(ticker: str, period_type: str, filing_date: str, consolidation: str) -> dict:
+    """
+    Look up source pages from step2_statement_pages.json.
+    """
+    if period_type == 'annual':
+        year = filing_date[:4]
+        filing_period = f"annual_{year}"
+        folder_pattern = f"{ticker}/{year}/{ticker}_Annual_{year}"
+    else:
+        filing_period = f"quarterly_{filing_date}"
+        year = filing_date[:4]
+        folder_pattern = f"{ticker}/{year}/{ticker}_Quarterly_{filing_date}"
+
+    pages = []
+    if ticker in STATEMENT_PAGES:
+        ticker_data = STATEMENT_PAGES[ticker]
+        if filing_period in ticker_data:
+            period_data = ticker_data[filing_period]
+            if consolidation in period_data:
+                pages = period_data[consolidation].get('PL', [])
+
+    return {
+        'source_pages': pages,
+        'source_url': f"{PDF_BASE_URL}/{folder_pattern}"
+    }
 
 
 def process_ticker(ticker: str, files: list[Path], qc_status: dict, verbose: bool = False) -> dict:
     """
-    Process all files for a single ticker and build the unified JSON.
-    """
-    # Structure: {consolidation: {(period_end, duration): [candidates]}}
-    # Using (period_end, duration) as key to keep 3M and 6M separate for same date
-    period_candidates = defaultdict(lambda: defaultdict(list))
+    Process all files for a single ticker and build the QC-optimized JSON.
+    Uses best-source selection to deduplicate periods appearing in multiple files.
 
-    # Parse all files and group by period
-    for filepath in files:
+    Output structure:
+    {
+        "ticker": "ABL",
+        "periods": [
+            {
+                "period_end": "2024-03-31",
+                "duration": "3M",
+                "duration_months": 3,
+                "year": 2024,
+                "consolidation": "consolidated",
+                "source_file": "ABL_quarterly_2024-03-31_consolidated.md",
+                "source_qc_status": "pass",
+                "source_pages": [57],
+                "source_url": "...",
+                "unit_type": "thousands",
+                "values": {
+                    "revenue_net": {
+                        "value": 35918528,
+                        "source_item": "Total Income"
+                    },
+                    ...
+                }
+            },
+            ...
+        ]
+    }
+    """
+    result = {
+        'ticker': ticker,
+        'generated_at': datetime.now().isoformat(),
+        'periods': [],
+    }
+
+    # Collect all candidates grouped by (consolidation, period_end, duration)
+    # This allows us to deduplicate periods that appear in multiple files
+    period_candidates = defaultdict(list)
+
+    # Process each file and collect candidates
+    for filepath in sorted(files):
         file_info = parse_filename(filepath.name)
         if not file_info:
             if verbose:
@@ -454,102 +461,84 @@ def process_ticker(ticker: str, files: list[Path], qc_status: dict, verbose: boo
 
         consolidation = file_info['consolidation']
         filing_date = file_info['filing_date']
+        qc_result = qc_status.get(filepath.name, 'unknown')
 
-        # Group rows by (period_end, duration) - both must match
+        # Get source pages for this filing
+        source_info = get_source_pages(ticker, file_info['period_type'], filing_date, consolidation)
+
+        # Create a candidate for each unique (period_end, duration) in this file
         for period_info in parsed['periods']:
             period_end = period_info['period_end']
             duration = period_info['duration']
             period_key = (period_end, duration)
 
-            # Extract values for this specific period (matching both end date AND duration)
-            period_rows = []
+            # Extract values for this specific period (keep raw values, no normalization)
+            values = {}
             for row in parsed['rows']:
                 if period_key in row['values']:
-                    period_rows.append({
-                        'canonical': row['canonical'],
-                        'source': row['source'],
-                        'ref': row['ref'],
-                        'value': row['values'][period_key],
-                    })
+                    raw_value = row['values'][period_key]
 
-            if period_rows:
+                    values[row['canonical']] = {
+                        'value': raw_value,  # Keep raw value, normalize in Stage 5
+                        'source_item': row['source_item'],
+                        'ref': row['ref'],
+                        'is_calculated': row['is_calculated'],
+                    }
+                    if row['formula']:
+                        values[row['canonical']]['formula'] = row['formula']
+
+            if values:
                 candidate = {
-                    'filename': filepath.name,
-                    'filing_date': filing_date,
                     'period_end': period_end,
                     'duration': duration,
-                    'unit_type': parsed['unit_type'],
-                    'rows': period_rows,
+                    'duration_months': period_info['duration_months'],
+                    'year': period_info['year'],
+                    'consolidation': consolidation,
+                    'period_type': file_info['period_type'],
+                    'filing_date': filing_date,
+                    'source_file': filepath.name,
+                    'source_qc_status': qc_result,
+                    'source_pages': source_info['source_pages'],
+                    'source_url': source_info['source_url'],
+                    'unit_type': parsed['unit_type'],  # Keep original unit, normalize in Stage 5
+                    'values': values,
                 }
-                # Use (period_end, duration) as key to keep 3M and 6M separate
-                period_candidates[consolidation][period_key].append(candidate)
+                # Key by (consolidation, period_end, duration) for deduplication
+                dedup_key = (consolidation, period_end, duration)
+                period_candidates[dedup_key].append(candidate)
 
-    # Select best source for each period
-    result = {
-        'ticker': ticker,
-        'periods': [],
-    }
+    # Select best source for each unique period
+    for dedup_key in sorted(period_candidates.keys()):
+        candidates = period_candidates[dedup_key]
+        best = select_best_source(candidates, qc_status)
+        result['periods'].append(best)
 
-    for consolidation in sorted(period_candidates.keys()):
-        # Keys are now (period_end, duration) tuples
-        for period_key in sorted(period_candidates[consolidation].keys()):
-            period_end, duration = period_key
-            candidates = period_candidates[consolidation][period_key]
-            best = select_best_source(candidates, qc_status)
+        if verbose:
+            consolidation, period_end, duration = dedup_key
+            num_candidates = len(candidates)
+            if num_candidates > 1:
+                print(f"  {consolidation} {period_end} {duration}: {len(best['values'])} values [{best['source_qc_status']}] (selected from {num_candidates} candidates)")
+            else:
+                print(f"  {consolidation} {period_end} {duration}: {len(best['values'])} values [{best['source_qc_status']}]")
 
-            qc_result = qc_status.get(best['filename'], 'unknown')
-
-            # Normalize values to standard unit (thousands)
-            normalized_values = {}
-            for row in best['rows']:
-                canonical = row['canonical']
-                raw_value = row['value']
-                normalized_values[canonical] = normalize_value(raw_value, best['unit_type'], canonical)
-
-            period_record = {
-                'period_end': period_end,
-                'duration': duration,  # Use duration from the key, not best['duration']
-                'consolidation': consolidation,
-                'unit_type': STANDARD_UNIT,  # All values normalized to thousands
-                'source_filing': best['filename'],
-                'source_qc': qc_result,
-                'values': normalized_values,
-            }
-
-            # Add source tracing details
-            if len(candidates) > 1:
-                period_record['alternate_sources'] = [
-                    {
-                        'filename': c['filename'],
-                        'qc': qc_status.get(c['filename'], 'unknown'),
-                    }
-                    for c in candidates if c['filename'] != best['filename']
-                ]
-
-            result['periods'].append(period_record)
-
-            if verbose:
-                alt_count = len(candidates) - 1
-                alt_str = f" (selected from {len(candidates)} sources)" if alt_count > 0 else ""
-                print(f"  {consolidation} {period_end} {duration}: {best['filename']} [{qc_result}]{alt_str}")
-
-    # Cross-period scale normalization disabled - was incorrectly "fixing"
-    # legitimate low-revenue quarters by multiplying by 1000
-    # scale_fixes = apply_cross_period_normalization(result['periods'], verbose)
-    # if scale_fixes > 0:
-    #     result['_scale_fixes'] = scale_fixes
+    # Sort periods by consolidation, then by period_end, then by duration
+    result['periods'].sort(key=lambda p: (
+        p['consolidation'],
+        p['period_end'],
+        p['duration_months']
+    ), reverse=False)
 
     return result
 
 
 def main():
-    parser = argparse.ArgumentParser(description="JSONify P&L extractions with best-source selection")
+    parser = argparse.ArgumentParser(description="JSONify P&L extractions V2 (QC-optimized)")
     parser.add_argument("--ticker", help="Process only this ticker")
     parser.add_argument("--verbose", action="store_true", help="Show detailed output")
     args = parser.parse_args()
 
     print("=" * 70)
-    print("STEP 5: JSONify P&L EXTRACTIONS")
+    print("STEP 4: JSONify P&L")
     print("=" * 70)
 
     if not INPUT_DIR.exists():
@@ -585,11 +574,10 @@ def main():
     stats = {
         'tickers': 0,
         'periods_total': 0,
-        'periods_with_alternates': 0,
         'periods_pass': 0,
         'periods_fail': 0,
-        'rescued': 0,  # Periods where we picked a passing alternate over a failing primary
-        'scale_fixes': 0,  # Periods where cross-period normalization was applied
+        'periods_exception': 0,
+        'periods_unknown': 0,
     }
 
     for ticker in sorted(files_by_ticker.keys()):
@@ -605,20 +593,15 @@ def main():
         stats['periods_total'] += len(result['periods'])
 
         for period in result['periods']:
-            if period['source_qc'] in ('pass', 'no_formulas'):
+            status = period['source_qc_status']
+            if status == 'pass':
                 stats['periods_pass'] += 1
-            else:
+            elif status == 'fail':
                 stats['periods_fail'] += 1
-
-            if 'alternate_sources' in period:
-                stats['periods_with_alternates'] += 1
-                # Check if we rescued this period (picked passing over failing)
-                alt_statuses = [a['qc'] for a in period['alternate_sources']]
-                if period['source_qc'] in ('pass', 'no_formulas') and 'fail' in alt_statuses:
-                    stats['rescued'] += 1
-
-        # Scale fixes disabled
-        # stats['scale_fixes'] += result.get('_scale_fixes', 0)
+            elif status == 'exception':
+                stats['periods_exception'] += 1
+            else:
+                stats['periods_unknown'] += 1
 
         # Write output
         output_file = OUTPUT_DIR / f"{ticker}.json"
@@ -626,14 +609,7 @@ def main():
             json.dump(result, f, indent=2)
 
         if not args.verbose:
-            rescued_count = sum(
-                1 for p in result['periods']
-                if p['source_qc'] in ('pass', 'no_formulas')
-                and 'alternate_sources' in p
-                and any(a['qc'] == 'fail' for a in p['alternate_sources'])
-            )
-            status = f" ({rescued_count} rescued)" if rescued_count > 0 else ""
-            print(f"  {ticker}: {len(result['periods'])} periods{status}")
+            print(f"  {ticker}: {len(result['periods'])} periods")
 
     # Print summary
     print("\n" + "=" * 70)
@@ -643,8 +619,8 @@ def main():
     print(f"  Total periods:         {stats['periods_total']}")
     print(f"  Periods (pass QC):     {stats['periods_pass']}")
     print(f"  Periods (fail QC):     {stats['periods_fail']}")
-    print(f"  Periods with alts:     {stats['periods_with_alternates']}")
-    print(f"  Rescued periods:       {stats['rescued']}")
+    print(f"  Periods (exception):   {stats['periods_exception']}")
+    print(f"  Periods (unknown):     {stats['periods_unknown']}")
     print()
     print(f"Output: {OUTPUT_DIR}/")
 

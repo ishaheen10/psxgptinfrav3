@@ -206,8 +206,13 @@ def parse_markdown_file(filepath: Path) -> dict | None:
             in_table = True
             continue
 
+        # Split by | and strip each part, but preserve empty cells for column alignment
         parts = [p.strip() for p in line.split('|')]
-        parts = [p for p in parts if p]
+        # Remove leading/trailing empty strings from | at start/end of line
+        if parts and parts[0] == '':
+            parts = parts[1:]
+        if parts and parts[-1] == '':
+            parts = parts[:-1]
 
         if not in_table:
             if len(parts) >= 4:

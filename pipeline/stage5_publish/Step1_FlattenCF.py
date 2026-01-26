@@ -147,6 +147,10 @@ def get_source_info_from_source(ticker: str, source: str, section: str) -> dict:
     - A filename like "AABS_quarterly_2021-03-31_consolidated.md"
     - A derivation description like "6M (AABS_quarterly_2021-06-30_consolidated.md) - Q1"
     """
+    # Handle None source
+    if source is None:
+        return {'source_pages': [], 'source_url': ''}
+
     # Extract the primary source file from the source string
     if '.md' in source:
         # Find the first .md file mentioned

@@ -42,6 +42,10 @@ markdown_pages
 pdf_pages
 database_pdfs
 pdf_thumbnails
+markdown_summary
+
+# Compiled document data (large, regenerable)
+database_jsonl_compiled/
 
 # Lock files (optional - uncomment to track)
 # uv.lock

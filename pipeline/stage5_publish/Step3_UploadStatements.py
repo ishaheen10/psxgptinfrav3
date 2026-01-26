@@ -50,7 +50,10 @@ COLUMNS = [
     "original_name",
     "value",
     "method",
-    "source_file"
+    "source_file",
+    "source_pages",
+    "source_url",
+    "qc_flag"
 ]
 
 # Statement type configs
@@ -78,6 +81,9 @@ def generate_insert(row: dict) -> str:
     values = []
     for col in COLUMNS:
         val = row.get(col)
+        # Convert source_pages array to JSON string
+        if col == "source_pages" and isinstance(val, list):
+            val = json.dumps(val)
         values.append(escape_sql(val))
 
     cols_sql = ", ".join(f'"{c}"' for c in COLUMNS)
@@ -214,6 +220,7 @@ def main():
     parser.add_argument("--sql-only", action="store_true", help="Generate SQL only, don't upload")
     parser.add_argument("--upload-only", action="store_true", help="Upload existing SQL, don't regenerate")
     parser.add_argument("--batch-size", type=int, default=5000, help="Batch size for uploads")
+    parser.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompt")
     args = parser.parse_args()
 
     print("=" * 60)
@@ -229,7 +236,7 @@ def main():
         types_to_process = [args.type]
 
     # Confirm upload
-    if not args.sql_only:
+    if not args.sql_only and not args.yes:
         print()
         print(f"Statement types: {', '.join(types_to_process)}")
         confirm = input("Proceed with upload? (y/N) ")

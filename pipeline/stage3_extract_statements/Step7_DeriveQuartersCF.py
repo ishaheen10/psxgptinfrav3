@@ -541,6 +541,141 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
             }
             derived_quarters.append(orphan_result)
 
+        # === Handle orphan 9M periods (derive Q3 when no 12M annual exists yet) ===
+        # Update covered dates after adding orphan 3M
+        covered_dates = {q['period_end'] for q in derived_quarters if q['consolidation'] == cons_type}
+
+        orphan_9m = [p for p in cons_periods
+                     if p['duration'] == '9M' and p['period_end'] not in covered_dates]
+
+        for orphan in orphan_9m:
+            period_end = orphan['period_end']  # This is Q3 end date (same as 9M end)
+            period_month = int(period_end[5:7])
+            period_year = int(period_end[:4])
+
+            # Determine fiscal year and quarter based on fiscal month
+            months_after_fy = (period_month - fy_month) % 12
+            if months_after_fy == 0:
+                months_after_fy = 12
+            quarter_num = (months_after_fy + 2) // 3
+
+            # This should be Q3 (9M period)
+            if quarter_num != 3:
+                continue
+
+            # Fiscal year is the calendar year of the FY end
+            if period_month > fy_month:
+                fiscal_year = period_year + 1
+            else:
+                fiscal_year = period_year
+
+            # Calculate Q1 and Q2 end dates for this fiscal year
+            q1_end = get_quarter_end_date(fy_month, fiscal_year, 1)
+            q2_end = get_quarter_end_date(fy_month, fiscal_year, 2)
+
+            # Try to find 6M period (ends at Q2 date)
+            p_6m = find_period(cons_periods, q2_end, '6M')
+
+            # Try to find Q1 and Q2 3M periods
+            p_3m_q1 = find_period(cons_periods, q1_end, '3M')
+            p_3m_q2 = find_period(cons_periods, q2_end, '3M')
+
+            derived_values = None
+            method = None
+
+            if p_6m:
+                # Q3 = 9M - 6M
+                derived_values = derive_quarter_values(orphan['values'], [p_6m['values']])
+                method = '9M-6M'
+            elif p_3m_q1 and p_3m_q2:
+                # Q3 = 9M - Q1 - Q2
+                derived_values = derive_quarter_values(orphan['values'], [p_3m_q1['values'], p_3m_q2['values']])
+                method = '9M-Q1-Q2'
+
+            if derived_values and method:
+                issues = qc_derived_values(derived_values, method)
+                orphan_q3_result = {
+                    'quarter': 'Q3',
+                    'period_end': period_end,
+                    'fiscal_year': fiscal_year,
+                    'consolidation': cons_type,
+                    'method': method,
+                    'source': f"derived from {orphan.get('source_filing')}",
+                    'values': derived_values,
+                    'source_labels': source_labels,
+                }
+                if issues:
+                    qc_issues.append({
+                        'ticker': ticker,
+                        'quarter': 'Q3',
+                        'fiscal_year': fiscal_year,
+                        'consolidation': cons_type,
+                        'method': method,
+                        'issues': issues,
+                        'values': derived_values,
+                    })
+                derived_quarters.append(orphan_q3_result)
+
+        # === Handle orphan 6M periods (derive Q2 when no 12M annual exists yet) ===
+        # Update covered dates after adding orphan 3M and orphan 9M-derived Q3
+        covered_dates = {q['period_end'] for q in derived_quarters if q['consolidation'] == cons_type}
+
+        orphan_6m = [p for p in cons_periods
+                     if p['duration'] == '6M' and p['period_end'] not in covered_dates]
+
+        for orphan in orphan_6m:
+            period_end = orphan['period_end']  # This is Q2 end date (same as 6M end)
+            period_month = int(period_end[5:7])
+            period_year = int(period_end[:4])
+
+            # Determine fiscal year and quarter based on fiscal month
+            months_after_fy = (period_month - fy_month) % 12
+            if months_after_fy == 0:
+                months_after_fy = 12
+            quarter_num = (months_after_fy + 2) // 3
+
+            # This should be Q2 (6M period)
+            if quarter_num != 2:
+                continue
+
+            # Fiscal year is the calendar year of the FY end
+            if period_month > fy_month:
+                fiscal_year = period_year + 1
+            else:
+                fiscal_year = period_year
+
+            # Calculate Q1 end date for this fiscal year
+            q1_end = get_quarter_end_date(fy_month, fiscal_year, 1)
+
+            # Try to find Q1 3M period
+            p_3m_q1 = find_period(cons_periods, q1_end, '3M')
+
+            if p_3m_q1:
+                # Q2 = 6M - Q1
+                derived_values = derive_quarter_values(orphan['values'], [p_3m_q1['values']])
+                issues = qc_derived_values(derived_values, '6M-Q1')
+                orphan_q2_result = {
+                    'quarter': 'Q2',
+                    'period_end': period_end,
+                    'fiscal_year': fiscal_year,
+                    'consolidation': cons_type,
+                    'method': '6M-Q1',
+                    'source': f"derived from {orphan.get('source_filing')}",
+                    'values': derived_values,
+                    'source_labels': source_labels,
+                }
+                if issues:
+                    qc_issues.append({
+                        'ticker': ticker,
+                        'quarter': 'Q2',
+                        'fiscal_year': fiscal_year,
+                        'consolidation': cons_type,
+                        'method': '6M-Q1',
+                        'issues': issues,
+                        'values': derived_values,
+                    })
+                derived_quarters.append(orphan_q2_result)
+
     return derived_quarters, qc_issues
 
 

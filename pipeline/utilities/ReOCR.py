@@ -17,6 +17,16 @@ Usage:
     python -m pipeline.utilities.ReOCR --manifest artifacts/stage1/corrupted_pages.json
     python -m pipeline.utilities.ReOCR --manifest artifacts/stage1/qc_data_missing.jsonl
     python -m pipeline.utilities.ReOCR --manifest corrupted.json --ticker LUCK
+
+    # Focus on specific statement type (provides context for year validation):
+    python -m pipeline.utilities.ReOCR --manifest cf_pages.json --statement-type CF
+    python -m pipeline.utilities.ReOCR --manifest bs_pages.json --statement-type BS
+    python -m pipeline.utilities.ReOCR --manifest pl_pages.json --statement-type PL
+
+The --statement-type flag:
+- Tells OCR to focus on extracting that statement type accurately
+- Provides filing date context to validate year headers (prevents wrong years from adjacent tables)
+- Allows simplification of other complex tables on the same page (e.g., Statement of Changes in Equity)
 """
 
 import argparse
@@ -72,12 +82,36 @@ def get_pdf_path(markdown_rel_path: str) -> Path:
     return PDF_PAGES_ROOT / pdf_rel
 
 
-def ocr_with_gemini(gemini_client, pdf_path: Path) -> str | None:
-    """Run Gemini OCR on a PDF page."""
-    if not pdf_path.exists():
-        return None
+def parse_filing_context(rel_path: str) -> dict:
+    """Extract filing context from path like TICKER/YEAR/TICKER_Quarterly_2025-06-30/page_009.md"""
+    import re
+    context = {"ticker": None, "period_end": None, "filing_type": None}
 
-    prompt = """Extract ALL text from this PDF page as clean, accurate markdown.
+    # Extract from folder name: TICKER_Quarterly_2025-06-30 or TICKER_Annual_2024
+    match = re.search(r'([A-Z0-9]+)_(Quarterly|Annual)_(\d{4}(?:-\d{2}-\d{2})?)', rel_path)
+    if match:
+        context["ticker"] = match.group(1)
+        context["filing_type"] = match.group(2).lower()
+        date_str = match.group(3)
+        # Parse year from date
+        context["period_end"] = date_str
+        context["year"] = int(date_str[:4])
+
+    return context
+
+
+STATEMENT_TYPE_NAMES = {
+    "CF": "Cash Flow Statement",
+    "BS": "Balance Sheet / Statement of Financial Position",
+    "PL": "Profit and Loss / Income Statement"
+}
+
+
+def build_ocr_prompt(filing_context: dict = None, statement_type: str = None) -> str:
+    """Build OCR prompt with optional filing context and statement type focus."""
+
+    # Base prompt
+    prompt_parts = ["""Extract ALL text from this PDF page as clean, accurate markdown.
 
 ## TABLES
 
@@ -92,8 +126,47 @@ Financial documents contain tables with numeric data. Output tables using markdo
 
 **Quarterly reports often have 4+ columns** showing both quarter and year-to-date figures:
 - Current quarter, prior year quarter, current YTD, prior year YTD
-- All columns must be captured - do not stop at 2 columns
+- All columns must be captured - do not stop at 2 columns"""]
 
+    # Add statement-type specific instructions
+    if statement_type and statement_type in STATEMENT_TYPE_NAMES:
+        stmt_name = STATEMENT_TYPE_NAMES[statement_type]
+        prompt_parts.append(f"""
+## FOCUS: {stmt_name.upper()}
+
+This page should contain a **{stmt_name}**. Focus on extracting this statement accurately.
+
+**SIDE-BY-SIDE LAYOUTS:** Some PDF pages show two statements side-by-side (left and right).
+- The {stmt_name} may be on the RIGHT side of the page
+- Extract ONLY the {stmt_name}, ignore the other statement entirely
+- Do NOT merge or confuse data from the two statements
+
+**If multiple statements appear on this page:**
+- Extract the {stmt_name} completely and accurately
+- SKIP the Statement of Changes in Equity entirely - do not extract it
+- The {stmt_name} is the priority - ensure its column headers and all data rows are captured correctly
+
+**IMPORTANT:** Read the statement title carefully - it says "Unconsolidated" or "Consolidated". Copy the EXACT title as shown.""")
+
+    # Add filing context for year validation
+    if filing_context and filing_context.get("year"):
+        year = filing_context["year"]
+        prior_year = year - 1
+        period_end = filing_context.get("period_end", "")
+        filing_type = filing_context.get("filing_type", "quarterly")
+
+        prompt_parts.append(f"""
+## FILING CONTEXT (USE FOR VALIDATION)
+
+This page is from a **{filing_type} filing** for period ending **{period_end}**.
+
+**Year validation:** Column headers should reference years {year} and {prior_year} (current and prior year).
+- If you see column headers with different years (e.g., {year-2} instead of {year}), this is likely OCR noise from an adjacent table
+- Ensure the extracted table headers show the correct years: {year} (current) and {prior_year} (comparative)
+- The filing date {period_end} confirms what years should appear""")
+
+    # Standard closing instructions
+    prompt_parts.append("""
 ## MULTIPLE STATEMENTS
 
 Some pages contain multiple statements (e.g., Consolidated followed by Unconsolidated).
@@ -111,7 +184,17 @@ Extract all of them with clear headings.
 3. No [DATA MISSING] markers - leave blank or use "..." if unreadable
 4. Preserve original language including Urdu/Arabic
 
-Return ONLY the markdown content, no explanations."""
+Return ONLY the markdown content, no explanations.""")
+
+    return "\n".join(prompt_parts)
+
+
+def ocr_with_gemini(gemini_client, pdf_path: Path, filing_context: dict = None, statement_type: str = None) -> str | None:
+    """Run Gemini OCR on a PDF page."""
+    if not pdf_path.exists():
+        return None
+
+    prompt = build_ocr_prompt(filing_context, statement_type)
 
     pdf_bytes = pdf_path.read_bytes()
     parts = [
@@ -172,13 +255,16 @@ def load_pages_to_reocr(manifest_path: Path = None, ticker: str = None) -> list:
     return list(set(pages))  # Dedupe
 
 
-def process_page(gemini_client, rel_path: str, results_lock: Lock, results: list) -> tuple:
+def process_page(gemini_client, rel_path: str, results_lock: Lock, results: list, statement_type: str = None) -> tuple:
     """Process a single page."""
     pdf_path = get_pdf_path(rel_path)
     markdown_path = MARKDOWN_ROOT / rel_path
 
+    # Parse filing context from path
+    filing_context = parse_filing_context(rel_path)
+
     try:
-        new_content = ocr_with_gemini(gemini_client, pdf_path)
+        new_content = ocr_with_gemini(gemini_client, pdf_path, filing_context, statement_type)
 
         if new_content:
             # Write new markdown
@@ -207,6 +293,8 @@ def main():
     parser.add_argument("--manifest", type=Path, help="Specific manifest file")
     parser.add_argument("--ticker", help="Process single ticker")
     parser.add_argument("--workers", type=int, default=MAX_WORKERS)
+    parser.add_argument("--statement-type", choices=["CF", "BS", "PL"],
+                        help="Focus OCR on specific statement type (CF=Cash Flow, BS=Balance Sheet, PL=Profit/Loss)")
     args = parser.parse_args()
 
     print("=" * 70)
@@ -240,9 +328,14 @@ def main():
         checkpoint.finalize()
         return
 
+    statement_type = getattr(args, 'statement_type', None)
+    if statement_type:
+        print(f"Statement focus: {STATEMENT_TYPE_NAMES.get(statement_type, statement_type)}")
+        print()
+
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {
-            executor.submit(process_page, gemini_client, p, results_lock, results): p
+            executor.submit(process_page, gemini_client, p, results_lock, results, statement_type): p
             for p in pages_to_process
         }
 

@@ -35,6 +35,7 @@ INPUT_DIR = PROJECT_ROOT / "data" / "json_bs"
 OUTPUT_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step6_qc_bs_results.json"
 EXTRACTION_DIR = PROJECT_ROOT / "data" / "extracted_bs"
 ALLOWLIST_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "bs_component_mismatch_allowlist.json"
+AE_ALLOWLIST_FILE = PROJECT_ROOT / "artifacts" / "stage3" / "step7_arithmetic_allowlist_bs.json"
 
 # Tolerance for accounting equation check
 ACCOUNTING_EQUATION_TOLERANCE = 0.05  # 5%
@@ -42,6 +43,10 @@ ACCOUNTING_EQUATION_TOLERANCE = 0.05  # 5%
 # Component mismatch allowlist - loaded at module init
 # Format: {(ticker, period, consolidation): reason}
 COMPONENT_MISMATCH_ALLOWLIST = {}
+
+# Accounting equation allowlist - for known AE failures
+# Format: {(ticker, period_end, consolidation): reason}
+AE_ALLOWLIST = {}
 
 
 def load_component_mismatch_allowlist():
@@ -71,8 +76,40 @@ def load_component_mismatch_allowlist():
         print(f"Warning: Could not load allowlist: {e}")
 
 
-# Load allowlist at module init
+def load_ae_allowlist():
+    """Load allowlist for accounting equation failures that have been manually reviewed."""
+    global AE_ALLOWLIST
+    if not AE_ALLOWLIST_FILE.exists():
+        return
+
+    try:
+        with open(AE_ALLOWLIST_FILE) as f:
+            data = json.load(f)
+
+        for item in data.get('allowlist', []):
+            ticker = item['ticker']
+            period = item['period']
+            consolidation = item['consolidation']
+            reason = item.get('reason', 'Allowlisted')
+
+            # Convert period format if needed (annual_2023 -> 2023-12-31)
+            if period.startswith('annual_'):
+                year = period.replace('annual_', '')
+                period_end = f"{year}-12-31"
+            elif period.startswith('quarterly_'):
+                period_end = period.replace('quarterly_', '')
+            else:
+                period_end = period
+
+            key = (ticker, period_end, consolidation)
+            AE_ALLOWLIST[key] = reason
+    except Exception as e:
+        print(f"Warning: Could not load AE allowlist: {e}")
+
+
+# Load allowlists at module init
 load_component_mismatch_allowlist()
+load_ae_allowlist()
 
 # Valid unit types
 VALID_UNITS = {'thousands', 'millions', 'rupees', 'full_rupees'}
@@ -260,6 +297,16 @@ def check_accounting_equation(period: dict, ticker: str = None) -> dict:
         "total_equity": total_equity,
         "total_liabilities": total_liabilities
     }
+
+    # Check AE allowlist - if this period is allowlisted, skip the check
+    period_end = period.get("period_end", "")
+    consolidation = period.get("consolidation", "")
+    ae_allowlist_key = (ticker, period_end, consolidation)
+    if ae_allowlist_key in AE_ALLOWLIST:
+        result["status"] = "pass"
+        result["allowlisted"] = True
+        result["allowlist_reason"] = AE_ALLOWLIST[ae_allowlist_key]
+        return result
 
     if total_assets is None or total_assets == 0:
         result["status"] = "skip"

@@ -202,6 +202,10 @@ Look for scale indicators in the document header, footer, or column headers. The
 
 **IMPORTANT**: "Rupees in thousand" means thousands, NOT rupees. The scale indicator always takes precedence over the currency name.
 
+## CURRENCY
+
+Some pages present data in multiple currencies (e.g., USD and PKR side by side). Always extract the PKR (Pakistan Rupees) values.
+
 ## SIGN CONVENTION
 
 Balance sheets use POSITIVE values for all items:
@@ -271,6 +275,21 @@ If the page contains a Balance Sheet, extract it regardless of any consolidation
 - "Lease liabilities - current" → `lease_liabilities_current`
 
 The goal is accurate data capture, not forcing everything into predefined buckets.
+
+## PPE SUB-COMPONENTS
+
+When Property, Plant and Equipment (PPE) is presented with sub-components, use distinct canonicals for each:
+- `operating_fixed_assets` - Main PPE (operating assets, fixed assets in own use)
+- `capital_work_in_progress` - CWIP, construction in progress
+- `major_spare_parts` - Spare parts inventory, stand-by equipment
+- `development_production_assets` - Oil & gas development/production assets
+- `development_decommissioning_costs` - Oil & gas decommissioning costs
+- `furniture_equipment` - Furniture and equipment (service companies)
+- `right_of_use_assets` - Lease assets under IFRS 16
+
+The **subtotal line** for total PPE should use `property_equipment` with a formula (e.g., W=T+U+V).
+
+Do NOT map all sub-components to `property_equipment` - use the specific canonicals above.
 
 ## SOURCE PAGES
 

@@ -217,6 +217,10 @@ Look for scale indicators in the document header, footer, or column headers. The
 
 **IMPORTANT**: "Rupees in thousand" means thousands, NOT rupees. The scale indicator always takes precedence over the currency name.
 
+## CURRENCY
+
+Some pages present data in multiple currencies (e.g., USD and PKR side by side). Always extract the PKR (Pakistan Rupees) values.
+
 ## SIGN CONVENTION
 
 Copy the EXACT signs from the source document. Do NOT flip or interpret signs.

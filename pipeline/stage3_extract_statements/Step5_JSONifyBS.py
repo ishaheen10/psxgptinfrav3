@@ -173,7 +173,9 @@ def parse_date(date_str: str) -> str | None:
 
 def parse_number(s: str) -> float | None:
     """Parse a number from the table."""
-    if not s or s.strip() in ['', '-', '—', 'N/A', 'n/a', '0']:
+    if not s or s.strip() in ['', '-', '—', 'N/A', 'n/a']:
+        return None
+    if s.strip() == '0':
         return 0.0
 
     s = s.strip().replace('**', '').replace(',', '').replace(' ', '')
@@ -279,15 +281,46 @@ def parse_bs_file(filepath: Path) -> dict | None:
             if not canonical or canonical in ['canonical', 'ref']:
                 continue
 
+            # Check if this is a subtotal (ref contains '=' OR canonical starts with 'total_')
+            # Totals should never be summed together - always overwrite
+            is_subtotal = '=' in ref or canonical.startswith('total_')
+
             # Extract values for each date column
             for i, date in enumerate(date_columns):
                 if i + 4 < len(cols):
                     value = parse_number(cols[i + 4])
                     if value is not None:
-                        result["periods"][date]["values"][canonical] = value
-                        result["periods"][date]["source_items"][canonical] = source_item
-                        if ref:
-                            result["periods"][date]["refs"][canonical] = ref
+                        period_data = result["periods"][date]
+                        if canonical in period_data["values"]:
+                            existing_is_subtotal = period_data.get("_is_subtotal", {}).get(canonical, False)
+
+                            if is_subtotal:
+                                # New item is subtotal - OVERWRITE (subtotals are authoritative)
+                                period_data["values"][canonical] = value
+                                period_data["source_items"][canonical] = source_item
+                                period_data.setdefault("_is_subtotal", {})[canonical] = True
+                                if ref:
+                                    period_data["refs"][canonical] = ref
+                            elif existing_is_subtotal:
+                                # Existing is subtotal, new is regular - SKIP (don't add to subtotal)
+                                pass
+                            else:
+                                # Both are regular items - SUM (unless duplicate value)
+                                existing = period_data["values"][canonical] or 0
+                                new_val = value or 0
+                                if existing == new_val:
+                                    # Same value - likely duplicate representation, skip
+                                    pass
+                                else:
+                                    period_data["values"][canonical] = existing + new_val
+                                    period_data["source_items"][canonical] += f"; {source_item}"
+                        else:
+                            # First occurrence - just set it
+                            period_data["values"][canonical] = value
+                            period_data["source_items"][canonical] = source_item
+                            period_data.setdefault("_is_subtotal", {})[canonical] = is_subtotal
+                            if ref:
+                                period_data["refs"][canonical] = ref
 
     return result if result["ticker"] and result["periods"] else None
 
@@ -330,7 +363,8 @@ def process_files(files: list[Path], exclusions: set, qc_status: dict, verbose: 
     # Temporary structure: {ticker: {(date, section): [candidate_list]}}
     # Collect all candidates first, then select best
     ticker_candidates = defaultdict(lambda: defaultdict(list))
-    stats = {"processed": 0, "skipped": 0, "periods_added": 0, "periods_dedupe": 0, "periods_fallback": 0}
+    stats = {"processed": 0, "skipped": 0, "periods_added": 0, "periods_dedupe": 0, "periods_fallback": 0,
+             "periods_pass": 0, "periods_fail": 0, "periods_unknown": 0}
 
     # Phase 1: Collect all candidates
     for filepath in sorted(files):
@@ -369,11 +403,18 @@ def process_files(files: list[Path], exclusions: set, qc_status: dict, verbose: 
             refs = dict(period_data.get("refs", {}))
 
             # Normalize canonical field aliases
-            FIELD_ALIASES = {
-                'subtotal_equity': 'total_equity',
-                'total_liabilities_and_equity': 'total_equity_and_liabilities',
-            }
-            for alias, canonical in FIELD_ALIASES.items():
+            # Applied in order — later aliases can chain from earlier ones
+            FIELD_ALIASES = [
+                ('subtotal_equity', 'total_equity'),
+                ('total_liabilities_and_equity', 'total_equity_and_liabilities'),
+                # Normalize all cash variants → 'cash_and_equivalents'
+                ('cash_and_bank_balances', 'cash_and_equivalents'),
+                ('cash_and_balances_with_treasury_banks', 'cash_and_equivalents'),
+                ('cash', 'cash_and_equivalents'),
+                # Bank "other banks" variant → 'bank_balances'
+                ('balances_with_other_banks', 'bank_balances'),
+            ]
+            for alias, canonical in FIELD_ALIASES:
                 if alias in raw_values and canonical not in raw_values:
                     raw_values[canonical] = raw_values.pop(alias)
                     if alias in source_items:
@@ -485,6 +526,14 @@ def process_files(files: list[Path], exclusions: set, qc_status: dict, verbose: 
 
             ticker_periods[ticker][key] = best
             stats["periods_added"] += 1
+            # Track QC status
+            qc_stat = best.get('source_qc_status', 'unknown')
+            if qc_stat in ('pass', 'no_formulas'):
+                stats["periods_pass"] += 1
+            elif qc_stat == 'fail':
+                stats["periods_fail"] += 1
+            else:
+                stats["periods_unknown"] += 1
 
     # Convert to final structure
     result = {}
@@ -557,6 +606,16 @@ def main():
     print(f"Periods added:      {stats['periods_added']}")
     print(f"Periods deduped:    {stats['periods_dedupe']}")
     print(f"Periods fallback:   {stats['periods_fallback']}")
+    print()
+    # QC stats
+    qc_pass = stats['periods_pass']
+    qc_fail = stats['periods_fail']
+    qc_unknown = stats['periods_unknown']
+    qc_total = qc_pass + qc_fail + qc_unknown
+    qc_rate = (qc_pass / qc_total * 100) if qc_total > 0 else 0
+    print(f"QC Pass:          {qc_pass} ({qc_rate:.1f}%)")
+    print(f"QC Fail:          {qc_fail}")
+    print(f"QC Unknown:       {qc_unknown}")
     print()
     print(f"Tickers:          {total_tickers}")
     print(f"Total periods:    {total_periods}")

@@ -791,67 +791,81 @@ def check_cross_period_normalization(filings: list) -> dict:
     This handles cases where different filings legitimately use different units
     (e.g., some in rupees, some in thousands). After normalization, legitimate
     variations are on the same scale and won't trigger false positives.
+
+    IMPORTANT: Checks are done SEPARATELY for consolidated vs unconsolidated filings,
+    since these can legitimately differ by 100x+ (e.g., bank holding company vs subsidiaries).
     """
     result = {"passed": 0, "failed": 0, "issues": []}
+
+    # Group filings by consolidation type
+    by_consolidation = {}
+    for f in filings:
+        consol = f.get('consolidation', 'unknown')
+        if consol not in by_consolidation:
+            by_consolidation[consol] = []
+        by_consolidation[consol].append(f)
 
     # Reference field for comparison
     ref_fields = ['cfo', 'net_cash_change', 'cash_end']
 
-    # Find first available reference field with enough data (using normalized values)
-    ref_field = None
-    for field in ref_fields:
-        values = [abs(get_normalized_value(f, field)) for f in filings if get_normalized_value(f, field) is not None]
-        if len(values) >= 3:
-            ref_field = field
-            break
+    # Check each consolidation group separately
+    for consol_type, consol_filings in by_consolidation.items():
+        # Find first available reference field with enough data (using normalized values)
+        ref_field = None
+        for field in ref_fields:
+            values = [abs(get_normalized_value(f, field)) for f in consol_filings if get_normalized_value(f, field) is not None]
+            if len(values) >= 3:
+                ref_field = field
+                break
 
-    if not ref_field:
-        result["passed"] = len(filings)
-        return result
+        if not ref_field:
+            result["passed"] += len(consol_filings)
+            continue
 
-    # Get all NORMALIZED values for the reference field
-    ref_values = []
-    for f in filings:
-        val = get_normalized_value(f, ref_field)
-        if val is not None and val != 0:
-            ref_values.append((f, abs(val)))
+        # Get all NORMALIZED values for the reference field
+        ref_values = []
+        for f in consol_filings:
+            val = get_normalized_value(f, ref_field)
+            if val is not None and val != 0:
+                ref_values.append((f, abs(val)))
 
-    if len(ref_values) < 3:
-        result["passed"] = len(filings)
-        return result
+        if len(ref_values) < 3:
+            result["passed"] += len(consol_filings)
+            continue
 
-    # Calculate median of normalized values
-    sorted_values = sorted(v for _, v in ref_values)
-    mid = len(sorted_values) // 2
-    if len(sorted_values) % 2 == 0:
-        median = (sorted_values[mid - 1] + sorted_values[mid]) / 2
-    else:
-        median = sorted_values[mid]
-
-    if median == 0:
-        result["passed"] = len(filings)
-        return result
-
-    # Check each filing against median (using normalized values)
-    for filing, val in ref_values:
-        ratio = val / median
-
-        if ratio > CROSS_PERIOD_THRESHOLD or ratio < (1 / CROSS_PERIOD_THRESHOLD):
-            # Get raw value for reporting (more meaningful to user)
-            raw_val = filing.get('values', {}).get(ref_field)
-            raw_val = abs(raw_val) if raw_val else val
-            result["failed"] += 1
-            result["issues"].append({
-                "source_file": filing.get("source_file"),
-                "ref_field": ref_field,
-                "value": raw_val,  # Report raw value
-                "normalized_value": val,  # Also include normalized for debugging
-                "median": median,
-                "ratio": round(ratio, 1),
-                "message": f"{ref_field}={raw_val:,.0f} (normalized: {val:,.0f}) is {ratio:.0f}x median ({median:,.0f}) - likely unit error"
-            })
+        # Calculate median of normalized values
+        sorted_values = sorted(v for _, v in ref_values)
+        mid = len(sorted_values) // 2
+        if len(sorted_values) % 2 == 0:
+            median = (sorted_values[mid - 1] + sorted_values[mid]) / 2
         else:
-            result["passed"] += 1
+            median = sorted_values[mid]
+
+        if median == 0:
+            result["passed"] += len(consol_filings)
+            continue
+
+        # Check each filing against median (using normalized values)
+        for filing, val in ref_values:
+            ratio = val / median
+
+            if ratio > CROSS_PERIOD_THRESHOLD or ratio < (1 / CROSS_PERIOD_THRESHOLD):
+                # Get raw value for reporting (more meaningful to user)
+                raw_val = filing.get('values', {}).get(ref_field)
+                raw_val = abs(raw_val) if raw_val else val
+                result["failed"] += 1
+                result["issues"].append({
+                    "source_file": filing.get("source_file"),
+                    "consolidation": consol_type,
+                    "ref_field": ref_field,
+                    "value": raw_val,  # Report raw value
+                    "normalized_value": val,  # Also include normalized for debugging
+                    "median": median,
+                    "ratio": round(ratio, 1),
+                    "message": f"{ref_field}={raw_val:,.0f} (normalized: {val:,.0f}) is {ratio:.0f}x median ({median:,.0f}) - likely unit error"
+                })
+            else:
+                result["passed"] += 1
 
     return result
 

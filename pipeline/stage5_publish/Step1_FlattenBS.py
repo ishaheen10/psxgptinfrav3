@@ -2,10 +2,10 @@
 """
 Step 1: Flatten Balance Sheet Data for D1 Upload
 
-Parses extracted_bs/*.md markdown files and outputs flat JSONL rows for financial_statements table.
+Reads parsed JSON files from json_bs/ and outputs flat JSONL rows for financial_statements table.
 
-Input:  data/extracted_bs/*.md
-Output: artifacts/stage4/bs_flat.jsonl
+Input:  data/json_bs/*.json
+Output: data/flat/bs.jsonl
 
 Usage:
     python3 Step1_FlattenBS.py
@@ -14,12 +14,11 @@ Usage:
 
 import argparse
 import json
-import re
 from pathlib import Path
 from collections import defaultdict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-EXTRACTED_BS_DIR = PROJECT_ROOT / "data" / "extracted_bs"
+JSON_BS_DIR = PROJECT_ROOT / "data" / "json_bs"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "flat"
 OUTPUT_FILE = OUTPUT_DIR / "bs.jsonl"
 
@@ -177,264 +176,80 @@ def get_source_info(ticker: str, period_type: str, period_part: str, section: st
     }
 
 
-def parse_filename(filename: str) -> dict:
-    """Parse filename like AABS_annual_2024_consolidated.md"""
-    stem = filename.replace('.md', '')
-    parts = stem.rsplit('_', 2)
-
-    if len(parts) < 3:
-        return None
-
-    section = parts[-1]  # consolidated or unconsolidated
-    period_part = parts[-2]  # 2024 or 2024-03-31
-
-    prefix = '_'.join(parts[:-2])
-
-    if '_annual_' in stem:
-        idx = prefix.rfind('_annual')
-        ticker = prefix[:idx] if idx > 0 else prefix.split('_')[0]
-        period_type = 'annual'
-    elif '_quarterly_' in stem:
-        idx = prefix.rfind('_quarterly')
-        ticker = prefix[:idx] if idx > 0 else prefix.split('_')[0]
-        period_type = 'quarterly'
-    else:
-        ticker = parts[0]
-        period_type = 'quarterly' if '-' in period_part else 'annual'
-
-    return {
-        'ticker': ticker,
-        'period_type': period_type,
-        'period_part': period_part,
-        'section': section
-    }
-
-
-def parse_period_column(col_header: str) -> dict:
-    """Parse column header like '30 Sep 2024' or '12M Sep 2024'"""
-    col_header = col_header.strip()
-
-    # Remove trailing annotations like (Unaudited), (Audited), (Notable), etc.
-    col_header = re.sub(r'\s*\([^)]*\)\s*$', '', col_header).strip()
-
-    months = {
-        'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
-        'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12,
-        'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6,
-        'July': 7, 'August': 8, 'September': 9, 'October': 10, 'November': 11, 'December': 12
-    }
-
-    # Pattern 1: 30 Sep 2024 (standard short format)
-    match = re.match(r'^(\d{1,2})\s+(\w+)\s+(\d{4})$', col_header)
-    if match:
-        day = int(match.group(1))
-        month_str = match.group(2)
-        year = int(match.group(3))
-        month = months.get(month_str, months.get(month_str[:3], 1))
-        period_end = f"{year}-{month:02d}-{day:02d}"
-        return {'period_end': period_end, 'period_duration': None}
-
-    # Pattern 2: September 30, 2024 (US format with full month)
-    match = re.match(r'^(\w+)\s+(\d{1,2}),?\s+(\d{4})$', col_header)
-    if match:
-        month_str = match.group(1)
-        day = int(match.group(2))
-        year = int(match.group(3))
-        month = months.get(month_str, months.get(month_str[:3], 1))
-        period_end = f"{year}-{month:02d}-{day:02d}"
-        return {'period_end': period_end, 'period_duration': None}
-
-    # Pattern 3: 3M Dec 2021, 12M Sep 2024 (duration format)
-    match = re.match(r'^(\d+M)\s+(\w+)\s+(\d{4})$', col_header)
-    if match:
-        duration = match.group(1)
-        month_str = match.group(2)
-        year = int(match.group(3))
-        month = months.get(month_str, months.get(month_str[:3], 1))
-
-        if month == 12:
-            last_day = 31
-        elif month in [4, 6, 9, 11]:
-            last_day = 30
-        elif month == 2:
-            last_day = 29 if year % 4 == 0 else 28
-        else:
-            last_day = 31
-
-        period_end = f"{year}-{month:02d}-{last_day:02d}"
-        return {'period_end': period_end, 'period_duration': duration}
-
-    return None
-
-
-def parse_value(val_str: str) -> float:
-    """Parse value string like '1,234,567' or '(123,456)' or '-'"""
-    if not val_str or val_str.strip() in ['-', '', '—', '–']:
-        return None
-
-    val_str = val_str.strip()
-
-    negative = False
-    if val_str.startswith('(') and val_str.endswith(')'):
-        negative = True
-        val_str = val_str[1:-1]
-
-    val_str = val_str.replace(',', '').replace(' ', '')
-
-    if val_str.startswith('-'):
-        negative = True
-        val_str = val_str[1:]
-
-    try:
-        value = float(val_str)
-        return -value if negative else value
-    except ValueError:
-        return None
-
-
-def is_valid_canonical_field(field: str) -> bool:
-    """Check if field name is a valid canonical field."""
-    if not field:
-        return False
-    field = field.strip().strip('*')
-    if not field:
-        return False
-    if field[0].isdigit():
-        return False
-    if '=' in field:
-        return False
-    if len(field) <= 2 and field.isupper():
-        return False
-    if ',' in field:
-        return False
-    if ' ' in field:
-        return False
-    if len(field) > 60:
-        return False
-    return True
-
-
-def parse_markdown_file(filepath: Path) -> list[dict]:
-    """Parse a markdown BS file and return list of row dicts."""
+def parse_json_bs_file(filepath: Path) -> list[dict]:
+    """Parse a json_bs JSON file and return list of row dicts."""
     rows = []
 
-    filename = filepath.name
-    file_info = parse_filename(filename)
-    if not file_info:
-        return rows
+    with open(filepath) as f:
+        data = json.load(f)
 
-    ticker = file_info['ticker']
-    period_type = file_info['period_type']
-    section = file_info['section']
-
+    ticker = data['ticker']
     meta = TICKER_META.get(ticker, {})
     company_name = meta.get("Company Name", "")
     industry = meta.get("Industry", "")
     fiscal_period = meta.get("fiscal_period", "12-31")
 
-    # Get source page info from manifest
-    source_info = get_source_info(ticker, period_type, file_info['period_part'], section)
+    for period in data.get('periods', []):
+        period_end = period['period_end']
+        section = period['consolidation']
+        filing_type = period.get('filing_type', 'quarterly')
+        unit_type = period.get('unit_type', 'thousands')
+        source_file = period.get('source_file', '')
+        values = period.get('values', {})
+        source_items = period.get('source_items', {})
 
-    content = filepath.read_text()
+        # Source info: prefer what's in the JSON, fall back to manifest lookup
+        source_pages = period.get('source_pages', [])
+        source_url = period.get('source_url', '')
 
-    unit_match = re.search(r'UNIT_TYPE:\s*(\w+)', content)
-    unit_type = unit_match.group(1) if unit_match else 'thousands'
+        # Compute fiscal year
+        period_year = int(period_end[:4])
+        period_month = int(period_end[5:7])
+        fiscal_month = int(fiscal_period.split('-')[0])
 
-    lines = content.split('\n')
-    in_table = False
-    headers = []
-    period_columns = []
+        if filing_type == 'annual':
+            fiscal_year = period_year
+        else:
+            if period_month > fiscal_month:
+                fiscal_year = period_year + 1
+            else:
+                fiscal_year = period_year
 
-    for line in lines:
-        line = line.strip()
-
-        if line.startswith('| Source Item |'):
-            in_table = True
-            headers = [h.strip() for h in line.split('|')[1:-1]]
-
-            for idx, header in enumerate(headers):
-                if idx < 3:
-                    continue
-                period_info = parse_period_column(header)
-                if period_info:
-                    period_columns.append({
-                        'col_idx': idx,
-                        'period_end': period_info['period_end'],
-                        'period_duration': period_info['period_duration']
-                    })
-            continue
-
-        if in_table and line.startswith('|') and '---' in line:
-            continue
-
-        if in_table and line.startswith('|'):
-            cells = [c.strip() for c in line.split('|')[1:-1]]
-
-            if len(cells) < 3:
+        # Each field becomes a row
+        for canonical_field, raw_value in values.items():
+            if raw_value is None:
                 continue
 
-            original_name = cells[0].strip().strip('*')
-            canonical_field = cells[1].strip().strip('*')
+            # Normalize value to thousands
+            value = normalize_value(raw_value, unit_type, canonical_field)
 
-            if not is_valid_canonical_field(canonical_field):
-                continue
+            # Get original name from source_items
+            original_name = source_items.get(canonical_field, canonical_field)
 
-            for period_col in period_columns:
-                col_idx = period_col['col_idx']
-                if col_idx >= len(cells):
-                    continue
+            # Get QC flag
+            qc_flag = get_qc_flag(ticker, period_end, section, canonical_field, value, fiscal_year)
 
-                raw_value = parse_value(cells[col_idx])
-                if raw_value is None:
-                    continue
-
-                # Normalize value to thousands
-                value = normalize_value(raw_value, unit_type, canonical_field)
-
-                period_end = period_col['period_end']
-                period_year = int(period_end[:4])
-                period_month = int(period_end[5:7])
-                fiscal_month = int(fiscal_period.split('-')[0])
-
-                if period_type == 'annual':
-                    fiscal_year = period_year
-                else:
-                    if period_month > fiscal_month:
-                        fiscal_year = period_year + 1
-                    else:
-                        fiscal_year = period_year
-
-                # Balance sheet is point-in-time, no duration
-                period_duration = period_col['period_duration'] or 'PIT'
-
-                # Get QC flag
-                qc_flag = get_qc_flag(ticker, period_end, section, canonical_field, value, fiscal_year)
-
-                row = {
-                    "ticker": ticker,
-                    "company_name": company_name,
-                    "industry": industry,
-                    "unit_type": "thousands",  # All values normalized to thousands
-                    "period_type": period_type,
-                    "period_end": period_end,
-                    "period_duration": period_duration,
-                    "fiscal_year": fiscal_year,
-                    "section": section,
-                    "statement_type": "balance_sheet",
-                    "canonical_field": canonical_field,
-                    "original_name": original_name,
-                    "value": value,
-                    "method": "",
-                    "source_file": filename,
-                    "source_pages": source_info['source_pages'],
-                    "source_url": source_info['source_url'],
-                    "qc_flag": qc_flag
-                }
-                rows.append(row)
-
-        if in_table and not line.startswith('|') and line:
-            if 'SOURCE_PAGES' in line:
-                break
+            row = {
+                "ticker": ticker,
+                "company_name": company_name,
+                "industry": industry,
+                "unit_type": "thousands",  # All values normalized to thousands
+                "period_type": filing_type,
+                "period_end": period_end,
+                "period_duration": "PIT",
+                "fiscal_year": fiscal_year,
+                "section": section,
+                "statement_type": "balance_sheet",
+                "canonical_field": canonical_field,
+                "original_name": original_name,
+                "value": value,
+                "method": "",
+                "source_file": source_file,
+                "source_pages": source_pages,
+                "source_url": source_url,
+                "qc_flag": qc_flag
+            }
+            rows.append(row)
 
     return rows
 
@@ -475,15 +290,13 @@ def main():
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    all_files = sorted(EXTRACTED_BS_DIR.glob("*.md"))
+    all_files = sorted(JSON_BS_DIR.glob("*.json"))
 
     if args.ticker:
-        all_files = [f for f in all_files if f.name.startswith(args.ticker + '_')]
+        all_files = [f for f in all_files if f.stem == args.ticker]
 
-    all_files = [f for f in all_files if not f.name.startswith('_')]
-
-    print(f"Flattening Balance Sheet data from {len(all_files)} files...")
-    print(f"Input:  {EXTRACTED_BS_DIR}")
+    print(f"Flattening Balance Sheet data from {len(all_files)} JSON files...")
+    print(f"Input:  {JSON_BS_DIR}")
     print(f"Output: {OUTPUT_FILE}")
     print()
 
@@ -493,7 +306,7 @@ def main():
     duplicates_skipped = 0
 
     for filepath in all_files:
-        rows = parse_markdown_file(filepath)
+        rows = parse_json_bs_file(filepath)
 
         if not rows:
             continue
@@ -503,8 +316,7 @@ def main():
                 row["ticker"],
                 row["period_end"],
                 row["section"],
-                row["canonical_field"],
-                row["original_name"]
+                row["canonical_field"]
             )
 
             if key in all_rows:
@@ -528,7 +340,7 @@ def main():
 
         total_files += 1
 
-        if total_files % 500 == 0:
+        if total_files % 50 == 0:
             print(f"  Processed {total_files} files...")
 
     # Write deduplicated rows

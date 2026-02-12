@@ -236,6 +236,9 @@ def parse_markdown_file(filepath: Path) -> dict | None:
         if not canonical or canonical.strip() == '':
             continue
 
+        # Parse ref for formula (e.g., "C=A+B" -> is_calculated=True)
+        is_calculated = '=' in ref
+
         # Parse values for each period
         values = {}
         for i, period_info in enumerate(result['periods']):
@@ -251,6 +254,7 @@ def parse_markdown_file(filepath: Path) -> dict | None:
                 'canonical': canonical,
                 'source_item': source_item,
                 'ref': ref,
+                'is_calculated': is_calculated,
                 'values': values,
             })
 
@@ -428,13 +432,39 @@ def process_file(filepath: Path, qc_status: dict, verbose: bool = False) -> dict
             'source_items': {},  # canonical -> source_item from document
         }
 
+        is_subtotal_flag = {}  # Track if value came from a subtotal
+
         for row in parsed['rows']:
             if period_key in row['values']:
                 canonical = row['canonical']
                 raw_value = row['values'][period_key]
 
-                period_obj['values'][canonical] = raw_value  # Keep raw value
-                period_obj['source_items'][canonical] = row['source_item']
+                if canonical in period_obj['values']:
+                    existing_is_subtotal = is_subtotal_flag.get(canonical, False)
+
+                    if row.get('is_calculated', False):
+                        # New item is subtotal - OVERWRITE (subtotals are authoritative)
+                        period_obj['values'][canonical] = raw_value
+                        period_obj['source_items'][canonical] = row['source_item']
+                        is_subtotal_flag[canonical] = True
+                    elif existing_is_subtotal:
+                        # Existing is subtotal, new is regular - SKIP
+                        pass
+                    else:
+                        # Both are regular items - SUM (unless duplicate value)
+                        existing = period_obj['values'][canonical] or 0
+                        new_val = raw_value or 0
+                        if existing == new_val:
+                            # Same value - likely duplicate, skip
+                            pass
+                        else:
+                            period_obj['values'][canonical] = existing + new_val
+                            period_obj['source_items'][canonical] += f"; {row['source_item']}"
+                else:
+                    # First occurrence - just set it
+                    period_obj['values'][canonical] = raw_value
+                    period_obj['source_items'][canonical] = row['source_item']
+                    is_subtotal_flag[canonical] = row.get('is_calculated', False)
 
         if period_obj['values']:
             result['periods'].append(period_obj)

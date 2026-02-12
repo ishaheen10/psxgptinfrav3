@@ -330,8 +330,8 @@ def select_best_source(candidates: list[dict], qc_status: dict) -> dict:
     def score_candidate(c):
         """Score a candidate - higher is better."""
         score = 0
-        # Prefer candidates with taxation data
-        if c.get('values', {}).get('taxation', {}).get('value') is not None:
+        # Prefer candidates with taxation data (flat format: values is {canonical: number})
+        if c.get('values', {}).get('taxation') is not None:
             score += 100
         # Prefer QC pass
         if passes_qc(c):
@@ -408,7 +408,7 @@ def process_ticker(ticker: str, files: list[Path], qc_status: dict, verbose: boo
     Process all files for a single ticker and build the QC-optimized JSON.
     Uses best-source selection to deduplicate periods appearing in multiple files.
 
-    Output structure:
+    Output structure (flat format, matching BS/CF):
     {
         "ticker": "ABL",
         "periods": [
@@ -423,13 +423,9 @@ def process_ticker(ticker: str, files: list[Path], qc_status: dict, verbose: boo
                 "source_pages": [57],
                 "source_url": "...",
                 "unit_type": "thousands",
-                "values": {
-                    "revenue_net": {
-                        "value": 35918528,
-                        "source_item": "Total Income"
-                    },
-                    ...
-                }
+                "values": { "revenue_net": 35918528, ... },
+                "source_items": { "revenue_net": "Total Income", ... },
+                "refs": { "revenue_net": "A", "gross_profit": "C=A+B", ... }
             },
             ...
         ]
@@ -473,19 +469,63 @@ def process_ticker(ticker: str, files: list[Path], qc_status: dict, verbose: boo
             period_key = (period_end, duration)
 
             # Extract values for this specific period (keep raw values, no normalization)
+            # Use flat format matching BS: separate dicts for values, source_items, refs
             values = {}
+            source_items = {}
+            refs = {}
+            is_subtotal_flag = {}  # Track if value came from a subtotal
+
+            # Key P&L fields that should ALWAYS overwrite (never sum)
+            # These are authoritative totals even without formulas
+            OVERWRITE_FIELDS = {
+                'profit_before_tax', 'taxation', 'net_profit', 'gross_profit',
+                'operating_profit', 'net_profit_parent', 'net_profit_continuing'
+            }
+
             for row in parsed['rows']:
                 if period_key in row['values']:
+                    canonical = row['canonical']
                     raw_value = row['values'][period_key]
 
-                    values[row['canonical']] = {
-                        'value': raw_value,  # Keep raw value, normalize in Stage 5
-                        'source_item': row['source_item'],
-                        'ref': row['ref'],
-                        'is_calculated': row['is_calculated'],
-                    }
-                    if row['formula']:
-                        values[row['canonical']]['formula'] = row['formula']
+                    # Treat as subtotal if has formula OR is a key P&L field
+                    is_authoritative = row['is_calculated'] or canonical in OVERWRITE_FIELDS
+
+                    if canonical in values:
+                        existing_is_subtotal = is_subtotal_flag.get(canonical, False)
+
+                        if is_authoritative:
+                            # New item is subtotal - OVERWRITE (subtotals are authoritative)
+                            values[canonical] = raw_value
+                            source_items[canonical] = row['source_item']
+                            is_subtotal_flag[canonical] = True
+                            if row['formula']:
+                                refs[canonical] = f"{row['ref']}={row['formula']}"
+                            elif row['ref']:
+                                refs[canonical] = row['ref']
+                        elif existing_is_subtotal:
+                            # Existing is subtotal, new is regular - SKIP (don't add to subtotal)
+                            pass
+                        else:
+                            # Both are regular items - SUM (unless duplicate value)
+                            existing = values[canonical] or 0
+                            new_val = raw_value or 0
+                            if existing == new_val:
+                                # Same value - likely duplicate representation, skip
+                                pass
+                            else:
+                                values[canonical] = existing + new_val
+                                source_items[canonical] += f"; {row['source_item']}"
+                                if row['ref']:
+                                    refs[canonical] = refs.get(canonical, '') + '+' + row['ref']
+                    else:
+                        # First occurrence - just set it
+                        values[canonical] = raw_value
+                        source_items[canonical] = row['source_item']
+                        is_subtotal_flag[canonical] = is_authoritative
+                        if row['formula']:
+                            refs[canonical] = f"{row['ref']}={row['formula']}"
+                        elif row['ref']:
+                            refs[canonical] = row['ref']
 
             if values:
                 candidate = {
@@ -500,8 +540,10 @@ def process_ticker(ticker: str, files: list[Path], qc_status: dict, verbose: boo
                     'source_qc_status': qc_result,
                     'source_pages': source_info['source_pages'],
                     'source_url': source_info['source_url'],
-                    'unit_type': parsed['unit_type'],  # Keep original unit, normalize in Stage 5
+                    'unit_type': parsed['unit_type'],  # Keep original unit, normalize later
                     'values': values,
+                    'source_items': source_items,
+                    'refs': refs,
                 }
                 # Key by (consolidation, period_end, duration) for deduplication
                 dedup_key = (consolidation, period_end, duration)

@@ -49,6 +49,11 @@ SEMANTIC_EQUATIONS = [
     ('gross_profit', [('revenue_net', 1), ('cost_of_goods_sold', 1)]),
 ]
 
+# Tickers with non-standard P&L structures where net_profit equation doesn't apply:
+# - ATRL: Segmented P&L with "refinery operations" PBT + post-tax associate income
+# - LCI: Two-tier taxation (final taxes + income tax) with discontinued operations
+SEMANTIC_EQUATION_SKIP_TICKERS = {'ATRL', 'LCI'}
+
 # Valid unit types
 VALID_UNITS = {'thousands', 'millions', 'rupees', 'full_rupees'}
 
@@ -66,6 +71,7 @@ CRITICAL_FIELDS_PL = {
         'lease_income',  # Leasing companies
         'share_of_associates', 'share_of_profit_in_associates',  # Investment holdings (main income source)
         'other_income',  # Holding companies, investment companies, IPPs in wind-down
+        'other_operating_income',  # Leasing companies (e.g., SLCL) where main income is fee-based
     ],
     'bottom_line': ['net_profit', 'profit_after_tax', 'net_profit_parent'],  # One of these
 }
@@ -115,10 +121,8 @@ def should_skip_period(ticker: str, period: dict) -> bool:
 
 
 def get_value(period: dict, canonical: str) -> float | None:
-    """Get a value from a period by canonical name."""
-    if canonical in period.get('values', {}):
-        return period['values'][canonical].get('value')
-    return None
+    """Get a value from a period by canonical name (flat format)."""
+    return period.get('values', {}).get(canonical)
 
 
 def normalize_value_to_thousands(value: float, unit_type: str, canonical: str = None) -> float:
@@ -191,9 +195,9 @@ def get_taxation_total(period: dict) -> float | None:
     """
     values = period.get('values', {})
 
-    # Check for pre-calculated taxation_total first
+    # Check for pre-calculated taxation_total first (flat format: values[key] is the number)
     if 'taxation_total' in values:
-        return values['taxation_total'].get('value')
+        return values['taxation_total']
 
     # Detect two-tier taxation structure
     has_two_tier = 'taxation_income_tax_total' in values or 'profit_before_income_taxes' in values
@@ -204,7 +208,7 @@ def get_taxation_total(period: dict) -> float | None:
         found_any = False
         for key in ['taxation', 'taxation_current', 'taxation_deferred', 'taxation_prior', 'taxation_minimum']:
             if key in values:
-                val = values[key].get('value')
+                val = values[key]
                 if val is not None:
                     total += val
                     found_any = True
@@ -212,7 +216,7 @@ def get_taxation_total(period: dict) -> float | None:
     else:
         # Normal structure: use taxation if present, else sum components
         if 'taxation' in values:
-            return values['taxation'].get('value')
+            return values['taxation']
 
         # Sum component taxation fields
         component_fields = ['taxation_current', 'taxation_deferred', 'taxation_prior', 'taxation_minimum']
@@ -220,7 +224,7 @@ def get_taxation_total(period: dict) -> float | None:
         found_any = False
         for key in component_fields:
             if key in values:
-                val = values[key].get('value')
+                val = values[key]
                 if val is not None:
                     total += val
                     found_any = True
@@ -514,7 +518,7 @@ def check_period_arithmetic(periods: list[dict], verbose: bool = False) -> list[
     return issues
 
 
-def check_semantic_equations(periods: list[dict], verbose: bool = False) -> list[dict]:
+def check_semantic_equations(periods: list[dict], ticker: str = None, verbose: bool = False) -> list[dict]:
     """
     Check semantic equations as sanity checks:
     - gross_profit = revenue_net + cost_of_goods_sold (5% tolerance)
@@ -526,6 +530,10 @@ def check_semantic_equations(periods: list[dict], verbose: bool = False) -> list
 
     Returns list of issues.
     """
+    # Skip tickers with known non-standard P&L structures
+    if ticker in SEMANTIC_EQUATION_SKIP_TICKERS:
+        return []
+
     issues = []
 
     for period in periods:
@@ -963,7 +971,7 @@ def qc_ticker(ticker: str, data: dict, verbose: bool = False) -> dict:
     result['summary']['by_check']['period_arithmetic'] = len(arithmetic_issues)
 
     # 4. Semantic equations
-    semantic_issues = check_semantic_equations(periods, verbose)
+    semantic_issues = check_semantic_equations(periods, ticker, verbose)
     all_issues.extend(semantic_issues)
     result['summary']['by_check']['semantic_equations'] = len(semantic_issues)
 

@@ -27,6 +27,7 @@ from datetime import datetime
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 QUARTERLY_CF_DIR = PROJECT_ROOT / "data" / "quarterly_cf"
 JSON_CF_DIR = PROJECT_ROOT / "data" / "json_cf"
+LTM_CF_DIR = PROJECT_ROOT / "data" / "ltm_cf"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "flat"
 OUTPUT_FILE = OUTPUT_DIR / "cf.jsonl"
 
@@ -189,6 +190,10 @@ def get_source_info_from_source(ticker: str, source: str, section: str) -> dict:
     return {'source_pages': [], 'source_url': ''}
 
 
+def get_row_label_map(period_like: dict) -> dict:
+    return period_like.get('source_items') or period_like.get('source_labels') or {}
+
+
 def parse_quarterly_file(filepath: Path) -> list[dict]:
     """Parse a quarterly_cf JSON file and return list of row dicts."""
     rows = []
@@ -208,7 +213,7 @@ def parse_quarterly_file(filepath: Path) -> list[dict]:
         method = quarter.get('method', 'unknown')
         source = quarter.get('source', '')
         values = quarter.get('values', {})
-        source_labels = quarter.get('source_labels', {})
+        source_labels = get_row_label_map(quarter)
 
         # Get source info
         source_info = get_source_info_from_source(ticker, source, section)
@@ -219,7 +224,7 @@ def parse_quarterly_file(filepath: Path) -> list[dict]:
                 continue
 
             # Use source_labels for original_name if available, else fall back to canonical
-            original_name = source_labels.get(canonical_field, canonical_field)
+            original_name = source_labels.get(canonical_field) or canonical_field
 
             # Get QC flag
             qc_flag = get_qc_flag(ticker, period_end, section, canonical_field, value, method, fiscal_year)
@@ -235,7 +240,7 @@ def parse_quarterly_file(filepath: Path) -> list[dict]:
                 "fiscal_year": fiscal_year,
                 "section": section,
                 "statement_type": "cash_flow",
-                "canonical_field": canonical_field,
+                "canonical_name": canonical_field,
                 "original_name": original_name,
                 "value": value,
                 "method": method,
@@ -288,9 +293,9 @@ def parse_json_cf_file(filepath: Path) -> list[dict]:
 
         period_end = period['period_end']
         section = period['consolidation']
-        source_filing = period.get('source_filing', '')
+        source_filing = period.get('source_file') or period.get('source_filing', '')
         values = period.get('values', {})
-        source_labels = period.get('source_labels', {})
+        source_labels = get_row_label_map(period)
         unit_type = period.get('unit_type', 'thousands')  # Get original unit
 
         # Get source info directly from json_cf (already has source_pages)
@@ -314,7 +319,7 @@ def parse_json_cf_file(filepath: Path) -> list[dict]:
             value = normalize_value(raw_value, unit_type)
 
             # Use source_labels for original_name if available, else fall back to canonical
-            original_name = source_labels.get(canonical_field, canonical_field)
+            original_name = source_labels.get(canonical_field) or canonical_field
 
             # Get QC flag (cumulative periods use 'direct' method)
             qc_flag = get_qc_flag(ticker, period_end, section, canonical_field, value, 'direct', fiscal_year)
@@ -330,7 +335,7 @@ def parse_json_cf_file(filepath: Path) -> list[dict]:
                 "fiscal_year": fiscal_year,
                 "section": section,
                 "statement_type": "cash_flow",
-                "canonical_field": canonical_field,
+                "canonical_name": canonical_field,
                 "original_name": original_name,
                 "value": value,
                 "method": "direct",  # Cumulative periods are direct from source
@@ -338,6 +343,62 @@ def parse_json_cf_file(filepath: Path) -> list[dict]:
                 "source_pages": source_pages,
                 "source_url": source_url,
                 "qc_flag": qc_flag
+            }
+            rows.append(row)
+
+    return rows
+
+
+def parse_ltm_cf_file(filepath: Path) -> list[dict]:
+    """Parse an ltm_cf JSON file and return list of row dicts for LTM periods."""
+    rows = []
+
+    with open(filepath) as f:
+        data = json.load(f)
+
+    ticker = data['ticker']
+    meta = TICKER_META.get(ticker, {})
+    company_name = meta.get("Company Name", "")
+    industry = meta.get("Industry", "")
+
+    for period in data.get('ltm_periods', []):
+        period_end = period['period_end']
+        section = period['consolidation']
+        values = period.get('values', {})
+        source_labels = get_row_label_map(period)
+        fiscal_year = period.get('fiscal_year')
+        method = period.get('method', 'derived')
+        qc_flag = period.get('qc_flag', '')
+        current_component = period.get('source_components', {}).get('current', {})
+        source_file = current_component.get('source_file')
+        source_pages = current_component.get('source_pages') or []
+        source_url = current_component.get('source_url', '')
+
+        for canonical_field, value in values.items():
+            if value is None:
+                continue
+
+            original_name = source_labels.get(canonical_field) or canonical_field
+
+            row = {
+                "ticker": ticker,
+                "company_name": company_name,
+                "industry": industry,
+                "unit_type": "thousands",
+                "period_type": "quarterly",
+                "period_end": period_end,
+                "period_duration": "LTM",
+                "fiscal_year": fiscal_year,
+                "section": section,
+                "statement_type": "cash_flow",
+                "canonical_name": canonical_field,
+                "original_name": original_name,
+                "value": value,
+                "method": method,
+                "source_file": source_file,
+                "source_pages": source_pages,
+                "source_url": source_url,
+                "qc_flag": qc_flag,
             }
             rows.append(row)
 
@@ -356,15 +417,18 @@ def main():
 
     # Get all json_cf files (for cumulative periods: 6M, 9M, 12M)
     json_cf_files = sorted(JSON_CF_DIR.glob("*.json"))
+    ltm_cf_files = sorted(LTM_CF_DIR.glob("*.json"))
 
     # Filter by ticker if specified
     if args.ticker:
         quarterly_files = [f for f in quarterly_files if f.stem == args.ticker]
         json_cf_files = [f for f in json_cf_files if f.stem == args.ticker]
+        ltm_cf_files = [f for f in ltm_cf_files if f.stem == args.ticker]
 
     print(f"Flattening Cash Flow data...")
     print(f"  3M periods from:  {QUARTERLY_CF_DIR} ({len(quarterly_files)} files)")
     print(f"  Cumulative from:  {JSON_CF_DIR} ({len(json_cf_files)} files)")
+    print(f"  LTM periods from: {LTM_CF_DIR} ({len(ltm_cf_files)} files)")
     print(f"  Output: {OUTPUT_FILE}")
     print()
 
@@ -400,13 +464,26 @@ def main():
 
     print(f"  Loaded {json_cf_count} tickers with cumulative periods")
 
+    # Process ltm_cf files for LTM periods
+    print("Processing LTM periods from ltm_cf...")
+    ltm_cf_count = 0
+    for filepath in ltm_cf_files:
+        rows = parse_ltm_cf_file(filepath)
+        if rows:
+            all_rows.extend(rows)
+            ltm_cf_count += 1
+            for row in rows:
+                duration_stats[row['period_duration']] += 1
+
+    print(f"  Loaded {ltm_cf_count} tickers with LTM periods")
+
     # Write rows
     qc_flag_stats = defaultdict(int)
 
     with open(OUTPUT_FILE, 'w') as out:
         for row in all_rows:
             out.write(json.dumps(row) + "\n")
-            field_stats[row["canonical_field"]] += 1
+            field_stats[row["canonical_name"]] += 1
             ticker_stats[row["ticker"]] += 1
             if row.get("qc_flag"):
                 # Extract flag type (before colon if present)

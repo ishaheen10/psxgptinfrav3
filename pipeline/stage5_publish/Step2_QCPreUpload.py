@@ -55,7 +55,7 @@ STATEMENT_TYPES = {
 }
 
 # Required fields that must not be null
-REQUIRED_FIELDS = ["ticker", "period_end", "canonical_field", "value", "statement_type"]
+REQUIRED_FIELDS = ["ticker", "period_end", "canonical_name", "value", "statement_type"]
 
 # Maximum reasonable value (10 trillion PKR in thousands = 10 billion thousands)
 MAX_VALUE = 10_000_000_000
@@ -100,7 +100,7 @@ def check_duplicates(rows: list[dict]) -> list[dict]:
             row.get("period_end"),
             row.get("period_duration"),  # Different durations are not duplicates
             row.get("section"),
-            row.get("canonical_field"),
+            row.get("canonical_name"),
             row.get("original_name")  # Different line items are not duplicates
         )
         if key in seen:
@@ -111,7 +111,7 @@ def check_duplicates(rows: list[dict]) -> list[dict]:
                 "period_end": row.get("period_end"),
                 "period_duration": row.get("period_duration"),
                 "section": row.get("section"),
-                "field": row.get("canonical_field"),
+                "field": row.get("canonical_name"),
                 "original_name": row.get("original_name"),
                 "first_occurrence": seen[key]
             })
@@ -131,7 +131,7 @@ def check_value_sanity(rows: list[dict], must_be_positive: set) -> list[dict]:
 
     for i, row in enumerate(rows):
         value = row.get("value")
-        field = row.get("canonical_field", "")
+        field = row.get("canonical_name", "")
         ticker = row.get("ticker")
         unit_type = row.get("unit_type", "thousands")
         qc_flag = row.get("qc_flag", "")
@@ -185,7 +185,7 @@ def check_coverage(rows: list[dict], expected_fields: set) -> dict:
         ticker = row.get("ticker")
         period_end = row.get("period_end")
         section = row.get("section")
-        field = row.get("canonical_field")
+        field = row.get("canonical_name")
 
         ticker_periods[ticker].add((period_end, section))
         period_fields[(ticker, period_end, section)].add(field)

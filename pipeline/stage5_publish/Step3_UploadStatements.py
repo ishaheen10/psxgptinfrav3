@@ -46,7 +46,7 @@ COLUMNS = [
     "fiscal_year",
     "section",
     "statement_type",
-    "canonical_field",
+    "canonical_name",
     "original_name",
     "value",
     "method",

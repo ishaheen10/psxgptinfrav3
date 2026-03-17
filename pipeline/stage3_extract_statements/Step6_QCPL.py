@@ -71,7 +71,7 @@ CRITICAL_FIELDS_PL = {
         'lease_income',  # Leasing companies
         'share_of_associates', 'share_of_profit_in_associates',  # Investment holdings (main income source)
         'other_income',  # Holding companies, investment companies, IPPs in wind-down
-        'other_operating_income',  # Leasing companies (e.g., SLCL) where main income is fee-based
+        'other_operating_income',  # Leasing companies where main income is fee-based
     ],
     'bottom_line': ['net_profit', 'profit_after_tax', 'net_profit_parent'],  # One of these
 }
@@ -91,7 +91,6 @@ SKIP_FILINGS = {
     'LUCK': ['annual_2021', 'quarterly_2021-03-31'],  # 0.18% rounding diff between 9M and 12M FY2020
     # Discrete vs cumulative quarters - not a real monotonicity issue
     'AABS': ['quarterly_2024-12-31', 'quarterly_2025-03-31'],  # Discrete quarters comparison
-    'SLCL': ['quarterly_2024-03-31', 'quarterly_2025-03-31', 'quarterly_2024-12-31', 'annual_2025'],  # Discrete quarters / period confusion
     # Business-related - legitimate variations
     'KAPCO': ['quarterly_2023-03-31', 'quarterly_2024-03-31', 'quarterly_2023-12-31'],  # IPP operations ceased
     'HUBC': ['quarterly_2024-12-31'],  # IPP wind-down, low unconsolidated revenue

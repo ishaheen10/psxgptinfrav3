@@ -240,7 +240,7 @@ def parse_json_bs_file(filepath: Path) -> list[dict]:
                 "fiscal_year": fiscal_year,
                 "section": section,
                 "statement_type": "balance_sheet",
-                "canonical_field": canonical_field,
+                "canonical_name": canonical_field,
                 "original_name": original_name,
                 "value": value,
                 "method": "",
@@ -316,7 +316,7 @@ def main():
                 row["ticker"],
                 row["period_end"],
                 row["section"],
-                row["canonical_field"]
+                row["canonical_name"]
             )
 
             if key in all_rows:
@@ -351,7 +351,7 @@ def main():
     with open(OUTPUT_FILE, 'w') as out:
         for row in all_rows.values():
             out.write(json.dumps(row) + "\n")
-            field_stats[row["canonical_field"]] += 1
+            field_stats[row["canonical_name"]] += 1
             ticker_stats[row["ticker"]] += 1
             if row.get("qc_flag"):
                 # Extract flag type (before colon if present)

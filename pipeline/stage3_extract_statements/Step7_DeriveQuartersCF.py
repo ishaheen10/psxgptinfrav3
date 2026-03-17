@@ -118,6 +118,19 @@ def find_period(periods: list, end_date: str, duration: str) -> dict | None:
     return next((p for p in periods if p['period_end'] == end_date and p['duration'] == duration), None)
 
 
+def get_anchor_source(period: dict | None) -> str | None:
+    """Use the current filing as the anchor provenance for direct or derived quarter rows."""
+    if not period:
+        return None
+    return period.get('source_file') or period.get('source_filing')
+
+
+def get_period_source_labels(period: dict | None) -> dict:
+    if not period:
+        return {}
+    return period.get('source_items') or period.get('source_labels') or {}
+
+
 def derive_quarter_values(base_values: dict, subtract_values: list[dict]) -> dict:
     """Derive quarter values by subtracting multiple periods from base."""
     result = {}
@@ -229,8 +242,9 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
         # Get source_labels from any period (same for all periods of this ticker/consolidation)
         source_labels = {}
         for p in cons_periods:
-            if p.get('source_labels'):
-                source_labels = p['source_labels']
+            labels = get_period_source_labels(p)
+            if labels:
+                source_labels = labels
                 break
 
         # Find all annual periods
@@ -270,7 +284,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                     'fiscal_year': fy_year,
                     'consolidation': cons_type,
                     'method': 'direct_3M',
-                    'source': p_3m_q1.get('source_filing'),
+                    'source': get_anchor_source(p_3m_q1),
                     'values': p_3m_q1['values'].copy(),
                     'source_labels': source_labels,
                 }
@@ -285,7 +299,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                     'fiscal_year': fy_year,
                     'consolidation': cons_type,
                     'method': 'direct_3M',
-                    'source': p_3m_q2.get('source_filing'),
+                    'source': get_anchor_source(p_3m_q2),
                     'values': p_3m_q2['values'].copy(),
                     'source_labels': source_labels,
                 }
@@ -299,7 +313,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                     'fiscal_year': fy_year,
                     'consolidation': cons_type,
                     'method': '6M-Q1',
-                    'source': f"derived from {p_6m.get('source_filing')}",
+                    'source': get_anchor_source(p_6m),
                     'values': derived_values,
                     'source_labels': source_labels,
                 }
@@ -323,7 +337,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                     'fiscal_year': fy_year,
                     'consolidation': cons_type,
                     'method': '9M-Q1-Q3',
-                    'source': f"derived from {p_9m.get('source_filing')}",
+                    'source': get_anchor_source(p_9m),
                     'values': derived_values,
                     'source_labels': source_labels,
                 }
@@ -347,7 +361,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                     'fiscal_year': fy_year,
                     'consolidation': cons_type,
                     'method': 'direct_3M',
-                    'source': p_3m_q3.get('source_filing'),
+                    'source': get_anchor_source(p_3m_q3),
                     'values': p_3m_q3['values'].copy(),
                     'source_labels': source_labels,
                 }
@@ -361,7 +375,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                     'fiscal_year': fy_year,
                     'consolidation': cons_type,
                     'method': '9M-6M',
-                    'source': f"derived from {p_9m.get('source_filing')}",
+                    'source': get_anchor_source(p_9m),
                     'values': derived_values,
                     'source_labels': source_labels,
                 }
@@ -384,7 +398,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                     'fiscal_year': fy_year,
                     'consolidation': cons_type,
                     'method': '9M-Q1-Q2',
-                    'source': f"derived from {p_9m.get('source_filing')}",
+                    'source': get_anchor_source(p_9m),
                     'values': derived_values,
                     'source_labels': source_labels,
                 }
@@ -408,7 +422,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                     'fiscal_year': fy_year,
                     'consolidation': cons_type,
                     'method': 'direct_3M',
-                    'source': p_3m_q4.get('source_filing'),
+                    'source': get_anchor_source(p_3m_q4),
                     'values': p_3m_q4['values'].copy(),
                     'source_labels': source_labels,
                 }
@@ -422,7 +436,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                     'fiscal_year': fy_year,
                     'consolidation': cons_type,
                     'method': '12M-9M',
-                    'source': f"derived from {p_12m.get('source_filing')}",
+                    'source': get_anchor_source(p_12m),
                     'values': derived_values,
                     'source_labels': source_labels,
                 }
@@ -448,7 +462,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                     'fiscal_year': fy_year,
                     'consolidation': cons_type,
                     'method': '12M-Q1-Q2-Q3',
-                    'source': f"derived from {p_12m.get('source_filing')}",
+                    'source': get_anchor_source(p_12m),
                     'values': derived_values,
                     'source_labels': source_labels,
                 }
@@ -475,7 +489,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                     'fiscal_year': fy_year,
                     'consolidation': cons_type,
                     'method': '12M-6M-Q3',
-                    'source': f"derived from {p_12m.get('source_filing')}",
+                    'source': get_anchor_source(p_12m),
                     'values': derived_values,
                     'source_labels': source_labels,
                 }
@@ -535,7 +549,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                 'fiscal_year': fiscal_year,
                 'consolidation': cons_type,
                 'method': 'direct_3M',
-                'source': orphan.get('source_filing'),
+                'source': get_anchor_source(orphan),
                 'values': orphan['values'].copy(),
                 'source_labels': source_labels,
             }
@@ -600,7 +614,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                     'fiscal_year': fiscal_year,
                     'consolidation': cons_type,
                     'method': method,
-                    'source': f"derived from {orphan.get('source_filing')}",
+                    'source': get_anchor_source(orphan),
                     'values': derived_values,
                     'source_labels': source_labels,
                 }
@@ -660,7 +674,7 @@ def process_ticker(ticker: str, data: dict, fy_month: int) -> tuple[list, list]:
                     'fiscal_year': fiscal_year,
                     'consolidation': cons_type,
                     'method': '6M-Q1',
-                    'source': f"derived from {orphan.get('source_filing')}",
+                    'source': get_anchor_source(orphan),
                     'values': derived_values,
                     'source_labels': source_labels,
                 }

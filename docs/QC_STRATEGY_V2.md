@@ -711,7 +711,7 @@ def detect_concatenated_columns(markdown_content: str) -> dict:
 **Affected ticker patterns (Jan 2026):**
 - Banks with large balance sheets (BAHL, ABL, HMB)
 - Insurance companies with complex P&L (AICL, EFUG)
-- Companies with multi-year summary tables (SLCL, HUMNL)
+- Companies with multi-year summary tables (HUMNL)
 
 ---
 
@@ -895,7 +895,7 @@ When QCPreUpload flags issues, follow this process:
 
 1. **Legitimate Business Situations** (majority of "unexpected_negative"):
    - Investment holding companies with negative returns (DAWH)
-   - Leasing companies with provision losses > income (FDPL, SLCL)
+   - Leasing companies with provision losses > income (FDPL)
    - REIT fair value accounting losses (TPLP)
    - Bank dividend adjustments/reversals (MEBL)
    - Real estate restatements (JVDC)
@@ -1047,7 +1047,7 @@ for item in [share_of_associates, other_non_operating, other_income, ...]:
 
 **Detection:** When 6M < 3M by large margin (>10%), it's likely discrete quarters, not cumulative.
 
-**Affected tickers:** AABS, SLCL, some JVDC filings
+**Affected tickers:** AABS, some JVDC filings
 
 ### Cross-Period Normalization - Unit Error Detection
 
@@ -1084,7 +1084,6 @@ SKIP_FILINGS = {
 
     # Discrete vs cumulative quarters
     'AABS': ['quarterly_2024-12-31', 'quarterly_2025-03-31'],
-    'SLCL': ['quarterly_2024-03-31', 'quarterly_2025-03-31'],
 
     # Business variations - legitimate
     'KAPCO': ['quarterly_2024-03-31'],  # IPP ceased operations
@@ -1198,7 +1197,7 @@ Based on P&L patterns, expect to skip:
 | **Holding companies** | TRG, PHDL | Same tickers, volatile values |
 | **IPPs** | KAPCO, HUBC | May have minimal CF in wind-down |
 | **Rounding** | ENGROH, LUCK | Same tolerance issues |
-| **Discrete quarters** | AABS, SLCL | Check if same pattern in CF |
+| **Discrete quarters** | AABS | Check if same pattern in CF |
 
 ---
 
@@ -1306,7 +1305,7 @@ Contains manually reviewed ticker/fiscal_year/consolidation combinations with do
 | Investment/holding companies | 10 | TPLP, DAWH - legitimate negative income |
 | Companies in liquidation/ceased ops | 3 | PHDL, KAPCO |
 | Quarterly restatement patterns | 6 | ADAMS, YOUW, JVDC |
-| Small absolute values | 3 | SLCL, GRYL - tiny numbers, large % variance |
+| Small absolute values | 3 | GRYL - tiny numbers, large % variance |
 | Problematic PDF extraction | 6 | EFERT (excluded per user) |
 | Banking/Insurance complexity | 4 | AKBL, EFUG, MEBL, FABL |
 
@@ -1470,7 +1469,7 @@ SKIP_FILINGS = {
 | OCR corruption | EFERT, SHEL | Values shifted, combined pages |
 | Taxation sign | PHDL, JVDC | Tax shown positive, formula fails |
 | Rounding <1% | ENGROH, LUCK | Immaterial variance |
-| Discrete quarters | AABS, SLCL | 6M value not cumulative |
+| Discrete quarters | AABS | 6M value not cumulative |
 | Business variations | KAPCO, HUBC, TRG | IPP wind-down, holding companies |
 | Two-tier taxation | LCI | Has taxation_final + taxation_total |
 

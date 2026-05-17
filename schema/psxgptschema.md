@@ -82,7 +82,7 @@ One row = one page from one filing. Full markdown text.
 | section_tags | TEXT | JSON object or JSON array of scored tags. Soft hints, not hard filters |
 | pg | INTEGER | Page number within filing, starting at 1 |
 | jpg_path | TEXT | Page image path |
-| summary | TEXT | Short page summary generated at ingestion |
+| search_text | TEXT | BM25-oriented retrieval text generated from each page |
 | text | TEXT | Full markdown text of the page |
 
 **Rules:**
@@ -101,7 +101,7 @@ One row = one searchable page entry corresponding to one `financial_documents` r
 | Column | Type | Values / Range |
 |--------|------|---------------|
 | rowid | INTEGER | Corresponds to the page row in `financial_documents` |
-| summary | TEXT | Indexed summary text |
+| search_text | TEXT | Indexed retrieval text |
 | text | TEXT | Indexed page text |
 
 **Rules:**

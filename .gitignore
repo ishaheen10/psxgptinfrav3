@@ -44,6 +44,12 @@ database_pdfs
 pdf_thumbnails
 markdown_summary
 
+# Search text output folders (large, regenerable)
+markdown_search_text/
+markdown_search_text_v5_full/
+markdown_search_text_v5_test/
+tmp_search_text_test/
+
 # Compiled document data (large, regenerable)
 database_jsonl_compiled/
 

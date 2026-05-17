@@ -3,8 +3,13 @@
 Step 7: Build the page skip manifest.
 
 Deterministically identifies pages to skip from classification/extraction:
-- Urdu-heavy pages (ASCII ratio < 0.85)
+- Urdu-heavy pages (ASCII ratio < 0.85 on content-only, excluding pipes/whitespace)
+- Empty-table pages (only markdown table pipes, no real content)
 - First/last 2 pages per filing (cover pages, back matter)
+- Image-only pages (page is just image tags with no text)
+- Heading-only pages (section dividers with a heading but no body)
+- Blank pages (near-empty, e.g. a single dot or whitespace)
+- Thin pages (too little extractable content to be useful)
 
 Input:  markdown_pages/<ticker>/<year>/<doc>/page_###.md
 Output: artifacts/stage1/step7_skip_manifest.json
@@ -23,6 +28,15 @@ import sys
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
+
+_IMG_RE = re.compile(r'!\[.*?\]\(.*?\)', re.DOTALL)
+_COMMENT_RE = re.compile(r'<!--.*?-->', re.DOTALL)
+_HEADING_LINE_RE = re.compile(r'^#{1,6}\s*', re.MULTILINE)
+
+# Pages with fewer content chars than this are skipped as thin/heading-only/blank
+THIN_CONTENT_THRESHOLD = 150
+# After stripping pipes+whitespace, fewer chars than this → empty_table
+EMPTY_TABLE_THRESHOLD = 20
 
 # Add parent to path for shared imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -45,12 +59,61 @@ PAGE_RE = re.compile(r"page_(\d+)\.md$", re.IGNORECASE)
 
 
 def compute_ascii_ratio(text: str) -> float:
-    """Compute ratio of ASCII characters in text."""
-    if not text:
+    """ASCII ratio on content-only (pipes and whitespace excluded).
+
+    Urdu text embedded in markdown tables has inflated ASCII ratios because
+    pipe separators and spaces dominate the character count. Stripping them
+    first gives an accurate read of whether the actual content is non-Latin.
+    """
+    content = re.sub(r'[|\s]', '', text)
+    if not content:
         return 1.0
-    total = len(text)
-    ascii_chars = sum(1 for ch in text if ord(ch) < 128)
-    return ascii_chars / total if total else 1.0
+    ascii_chars = sum(1 for ch in content if ord(ch) < 128)
+    return ascii_chars / len(content)
+
+
+def compute_content_chars(text: str) -> int:
+    """Chars remaining after stripping page comment, image tags, heading markers, and whitespace."""
+    text = _COMMENT_RE.sub('', text)
+    text = _IMG_RE.sub('', text)
+    text = _HEADING_LINE_RE.sub('', text)
+    return len(text.strip())
+
+
+def classify_content(text: str) -> str | None:
+    """Return a skip reason if the page content is too thin to be useful, else None.
+
+    Checks (in order):
+      empty_table   — only markdown table pipes, no real content
+      blank         — near-empty after stripping the page comment
+      image_only    — page consists only of image tags
+      heading_only  — section divider: heading text but no body
+      thin          — not enough content to produce a reliable search_text
+    """
+    # Strip the page comment to judge actual content
+    body = _COMMENT_RE.sub('', text).strip()
+
+    if len(body) < 20:
+        return "blank"
+
+    # Empty table: pipes and spaces but nothing else
+    non_table = re.sub(r'[|\s]', '', body)
+    if len(non_table) < EMPTY_TABLE_THRESHOLD:
+        return "empty_table"
+
+    images = len(_IMG_RE.findall(body))
+    content_chars = compute_content_chars(text)
+
+    if images >= 1 and content_chars < 40:
+        return "image_only"
+
+    if images == 0 and content_chars < 40:
+        return "heading_only"
+
+    if content_chars < THIN_CONTENT_THRESHOLD:
+        return "thin"
+
+    return None
 
 
 def get_doc_page_bounds(files: list, root: Path) -> dict:
@@ -140,10 +203,18 @@ def main():
             if page_num <= low + 1 or page_num >= high - 1:
                 skip_reason = "edge"
 
-        # Check: Urdu-heavy
+        # Check: content quality (blank, empty_table, image_only, heading_only, thin)
+        # Run before the Urdu check so garbage pages get a precise reason.
         if not skip_reason:
             try:
-                text = path.read_text(encoding="utf-8", errors="ignore").strip()
+                text = path.read_text(encoding="utf-8", errors="ignore")
+                skip_reason = classify_content(text)
+            except Exception:
+                pass
+
+        # Check: Urdu-heavy (ASCII ratio computed on content only, pipes/whitespace excluded)
+        if not skip_reason:
+            try:
                 if compute_ascii_ratio(text) < ASCII_THRESHOLD:
                     skip_reason = "urdu"
             except Exception:

@@ -48,7 +48,7 @@ COLUMNS: Sequence[str] = (
     "section_tags",
     "pg",
     "jpg_path",
-    "summary",
+    "search_text",
     "text",
 )
 
@@ -106,9 +106,9 @@ def normalize_record(doc: Dict, ticker_hint: str) -> Dict:
     if len(text) > MAX_TEXT_LENGTH:
         text = text[:MAX_TEXT_LENGTH] + "\n...[truncated]"
 
-    summary = doc.get("summary") or ""
-    if len(summary) > MAX_TEXT_LENGTH:
-        summary = summary[:MAX_TEXT_LENGTH] + "...[truncated]"
+    search_text = doc.get("search_text") or ""
+    if len(search_text) > MAX_TEXT_LENGTH:
+        search_text = search_text[:MAX_TEXT_LENGTH] + "...[truncated]"
 
     return {
         "ticker": ticker,
@@ -119,7 +119,7 @@ def normalize_record(doc: Dict, ticker_hint: str) -> Dict:
         "section_tags": doc.get("section_tags"),
         "pg": pg,
         "jpg_path": doc.get("jpg_path"),
-        "summary": summary,
+        "search_text": search_text,
         "text": text,
     }
 

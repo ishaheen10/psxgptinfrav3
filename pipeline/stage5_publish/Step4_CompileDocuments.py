@@ -4,7 +4,7 @@ Step 4: Compile enriched JSONL database from markdown sources.
 
 For each markdown file under ``markdown_pages``, this script:
     * reads individual page files (page_001.md, page_002.md, etc.),
-    * attaches the relevant summary, section tags, and ticker metadata,
+    * attaches the relevant search_text, section tags, and ticker metadata,
     * writes JSONL records with the enriched schema to the output root.
 
 Input:  markdown_pages/<TICKER>/<YEAR>/<FILING>/page_*.md
@@ -28,7 +28,7 @@ PAGE_FILE_PATTERN = re.compile(r"page_(\d+)\.md$", re.IGNORECASE)
 # Paths relative to project root
 INPUT_ROOT = Path("markdown_pages")
 OUTPUT_ROOT = Path("database_jsonl_compiled")
-SUMMARY_ROOT = Path("markdown_summary")
+SEARCH_TEXT_ROOT = Path("markdown_search_text")
 TICKER_META_PATH = Path("tickers100.json")
 TAGS_MANIFEST = Path("artifacts/stage2/step1_classification.jsonl")  # Section tags from classification
 SKIP_MANIFEST = Path("artifacts/stage1/step7_skip_manifest.json")    # Pages to skip (edge, urdu, corrupted)
@@ -69,18 +69,18 @@ PAGE_FILE_RE = re.compile(r"page_(\d+)\.md$", re.IGNORECASE)
 SUMMARY_PAGE_RE = re.compile(r"<!--\s*Page\s+(\d+)\s*-->", re.IGNORECASE)
 
 
-def load_summary_map(summary_dir: Path) -> Dict[int, str]:
-    """Load page-wise summaries from summary_dir/page_###.md files."""
-    if not summary_dir.exists():
+def load_search_text_map(search_text_dir: Path) -> Dict[int, str]:
+    """Load page-wise search_text from search_text_dir/page_###.md files."""
+    if not search_text_dir.exists():
         return {}
     sections: Dict[int, str] = {}
-    for summary_file in summary_dir.glob("page_*.md"):
-        match = PAGE_FILE_RE.search(summary_file.name)
+    for search_text_file in search_text_dir.glob("page_*.md"):
+        match = PAGE_FILE_RE.search(search_text_file.name)
         if not match:
             continue
         page_num = int(match.group(1))
         try:
-            text = summary_file.read_text(encoding="utf-8")
+            text = search_text_file.read_text(encoding="utf-8")
             # Strip the <!-- Page X --> header if present
             text = SUMMARY_PAGE_RE.sub("", text, count=1).strip()
             sections[page_num] = text
@@ -212,7 +212,7 @@ def process_document_dir(
     doc_dir: Path,
     input_root: Path,
     output_root: Path,
-    summary_root: Path,
+    search_text_root: Path,
     ticker_meta: Dict[str, Dict[str, str]],
     overwrite: bool,
     skipped_pages: Set[str],
@@ -226,12 +226,12 @@ def process_document_dir(
     if len(parts) < 3:
         return
     ticker, folder, report_stem = parts[0], parts[1], parts[2]
-    summary_path = summary_root / ticker / folder / report_stem
+    search_text_path = search_text_root / ticker / folder / report_stem
     output_path = output_root / ticker / folder / f"{report_stem}.jsonl"
     if output_path.exists() and not overwrite:
         return
 
-    summary_map = load_summary_map(summary_path)
+    search_text_map = load_search_text_map(search_text_path)
     ticker_upper = ticker.upper()
     ticker_info = ticker_meta.get(ticker_upper, {})
     industry = ticker_info.get("Industry", "")
@@ -261,7 +261,7 @@ def process_document_dir(
                 page_text = page_file.read_text(encoding="utf-8")
             except Exception:
                 continue
-            summary = summary_map.get(page_no, "")
+            search_text = search_text_map.get(page_no, "")
             jpg_path = f"{ticker}/{folder}/{report_stem}/page_{page_no:03d}.jpg"
             section_tags = section_tag_map.get(rel_page, {})
             record = {
@@ -273,7 +273,7 @@ def process_document_dir(
                 "section_tags": section_tags,
                 "pg": page_no,
                 "jpg_path": jpg_path,
-                "summary": summary,
+                "search_text": search_text,
                 "text": page_text,
             }
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -286,11 +286,11 @@ def main() -> None:
 
     input_root = INPUT_ROOT
     output_root = OUTPUT_ROOT
-    summary_root = SUMMARY_ROOT
+    search_text_root = SEARCH_TEXT_ROOT
 
     print(f"Input:   {input_root}")
     print(f"Output:  {output_root}")
-    print(f"Summary: {summary_root}")
+    print(f"Search text: {search_text_root}")
     print()
 
     ticker_meta = load_ticker_metadata(TICKER_META_PATH)
@@ -317,7 +317,7 @@ def main() -> None:
                     doc_dir,
                     input_root,
                     output_root,
-                    summary_root,
+                    search_text_root,
                     ticker_meta,
                     OVERWRITE_OUTPUT,
                     skip_pages,

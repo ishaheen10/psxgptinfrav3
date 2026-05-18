@@ -92,20 +92,44 @@ def generate_insert(row: dict) -> str:
     return f"INSERT INTO {TABLE_NAME} ({cols_sql}) VALUES ({vals_sql});"
 
 
-def generate_sql(input_file: Path, output_file: Path, statement_name: str) -> int:
-    """Generate SQL file from JSONL. Returns row count."""
+def generate_sql(input_file: Path, output_file: Path, statement_name: str,
+                 ticker_filter: str = None, stmt_type: str = None) -> int:
+    """Generate SQL file from JSONL. Returns row count.
+
+    If ticker_filter is set, only rows matching that ticker are included and
+    a DELETE statement is prepended to remove existing rows for that ticker
+    before re-inserting.
+    """
     print(f"Reading: {input_file}")
+    if ticker_filter:
+        print(f"  Filtering to ticker: {ticker_filter}")
 
     row_count = 0
     with open(input_file) as f_in, open(output_file, 'w') as f_out:
         f_out.write(f"-- {TABLE_NAME} {statement_name} upload\n")
         f_out.write(f"-- Generated: {datetime.now().isoformat()}\n")
-        f_out.write(f"-- Source: {input_file.name}\n\n")
+        f_out.write(f"-- Source: {input_file.name}\n")
+        if ticker_filter:
+            f_out.write(f"-- Ticker filter: {ticker_filter}\n")
+        f_out.write("\n")
+
+        # Pre-delete rows for specific ticker to avoid duplicates
+        if ticker_filter and stmt_type:
+            stmt_map = {'pl': 'profit_loss', 'bs': 'balance_sheet', 'cf': 'cash_flow'}
+            stmt_db_name = stmt_map.get(stmt_type, stmt_type)
+            f_out.write(
+                f"DELETE FROM {TABLE_NAME} "
+                f"WHERE ticker = '{ticker_filter}' "
+                f"AND statement_type = '{stmt_db_name}';\n\n"
+            )
 
         for line in f_in:
             if not line.strip():
                 continue
             row = json.loads(line)
+            # Apply ticker filter
+            if ticker_filter and row.get('ticker') != ticker_filter:
+                continue
             sql = generate_insert(row)
             f_out.write(sql + "\n")
             row_count += 1
@@ -178,13 +202,21 @@ def upload_sql(sql_file: Path, batch_size: int = 5000) -> bool:
 
 def process_statement_type(stmt_type: str, config: dict, args) -> bool:
     """Process a single statement type."""
+    ticker_filter = getattr(args, 'ticker', None)
+
+    # When filtering by ticker, use a separate output file to avoid clobbering the full SQL
+    if ticker_filter:
+        out_stem = config['output'].replace('.sql', f'_{ticker_filter}.sql')
+    else:
+        out_stem = config['output']
+
     input_file = DATA_FLAT_DIR / config['input']
-    output_file = ARTIFACTS_DIR / config['output']
+    output_file = ARTIFACTS_DIR / out_stem
     statement_name = config['name']
 
     print()
     print("=" * 60)
-    print(f"{statement_name.upper()}")
+    print(f"{statement_name.upper()}" + (f" [{ticker_filter}]" if ticker_filter else ""))
     print("=" * 60)
 
     # Generate SQL
@@ -194,7 +226,8 @@ def process_statement_type(stmt_type: str, config: dict, args) -> bool:
             print(f"Run Step1_Flatten{stmt_type.upper()}.py first.")
             return False
 
-        row_count = generate_sql(input_file, output_file, statement_name)
+        row_count = generate_sql(input_file, output_file, statement_name,
+                                 ticker_filter=ticker_filter, stmt_type=stmt_type)
 
         if row_count == 0:
             print("No data to upload")
@@ -217,6 +250,7 @@ def main():
     parser = argparse.ArgumentParser(description="Upload statement data to D1")
     parser.add_argument("--type", required=True, choices=['pl', 'bs', 'cf', 'all'],
                         help="Statement type to upload")
+    parser.add_argument("--ticker", help="Upload only rows for this ticker (issues DELETE before INSERT)")
     parser.add_argument("--sql-only", action="store_true", help="Generate SQL only, don't upload")
     parser.add_argument("--upload-only", action="store_true", help="Upload existing SQL, don't regenerate")
     parser.add_argument("--batch-size", type=int, default=5000, help="Batch size for uploads")

@@ -52,6 +52,39 @@ if TICKERS_FILE.exists():
 else:
     TICKER_META = {}
 
+# Canonical name normalization: remap variant names to canonical
+# Applied to ALL tickers
+EPS_CANONICAL_MAP = {
+    'eps_basic': 'eps',
+    'eps_diluted': 'eps',
+    'eps_basic_diluted': 'eps',
+}
+
+# Revenue field remap for bank tickers only
+# Banks use total_income instead of revenue_net
+BANK_REVENUE_REMAP = {
+    'revenue_net': 'total_income',
+}
+
+# Identify bank tickers from TICKER_META (Industry = 'Banking')
+BANK_TICKERS = {
+    sym for sym, meta in TICKER_META.items()
+    if meta.get('Industry', '') == 'Banking'
+}
+
+
+def normalize_canonical(canonical: str, ticker: str) -> str:
+    """
+    Normalize variant canonical names to their canonical form.
+    - eps_basic / eps_diluted / eps_basic_diluted -> eps (all tickers)
+    - revenue_net -> total_income for bank tickers only
+    """
+    if canonical in EPS_CANONICAL_MAP:
+        return EPS_CANONICAL_MAP[canonical]
+    if ticker in BANK_TICKERS and canonical in BANK_REVENUE_REMAP:
+        return BANK_REVENUE_REMAP[canonical]
+    return canonical
+
 # Load statement pages manifest (TICKER -> period -> section -> statement_type -> pages)
 STATEMENT_PAGES = {}
 if STATEMENT_PAGES_FILE.exists():
@@ -226,6 +259,9 @@ def parse_quarterly_file(filepath: Path) -> list[dict]:
             if value is None:
                 continue
 
+            # Normalize canonical name (eps variants -> eps; revenue_net -> total_income for banks)
+            canonical_field = normalize_canonical(canonical_field, ticker)
+
             # Use source_labels for original_name if available, else fall back to canonical
             original_name = source_labels.get(canonical_field) or canonical_field
 
@@ -327,6 +363,9 @@ def parse_json_pl_file(filepath: Path) -> list[dict]:
             if value_data is None:
                 continue
 
+            # Normalize canonical name (eps variants -> eps; revenue_net -> total_income for banks)
+            canonical_field = normalize_canonical(canonical_field, ticker)
+
             # Handle V2 format: values are dicts with {value, source_item, ref, is_calculated}
             if isinstance(value_data, dict):
                 raw_value = value_data.get('value')
@@ -398,6 +437,9 @@ def parse_ltm_pl_file(filepath: Path) -> list[dict]:
         for canonical_field, value in values.items():
             if value is None:
                 continue
+
+            # Normalize canonical name (eps variants -> eps; revenue_net -> total_income for banks)
+            canonical_field = normalize_canonical(canonical_field, ticker)
 
             original_name = source_labels.get(canonical_field) or canonical_field
 

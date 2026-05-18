@@ -117,6 +117,47 @@ HAVING
         AND canonical_name = 'revenue_net'
       THEN value END), 0) IS NOT NULL;
 
+-- net_margin for bank tickers: use total_income instead of revenue_net
+-- Bank tickers (Industry = 'Banking' in tickers100.json):
+-- ABL, AKBL, BAFL, BAHL, BIPL, BOP, FABL, HBL, HMB, MCB, MEBL, NBP, SCBPL, UBL
+INSERT INTO ratios (ticker, period_end, period_duration, section, ratio_name, value)
+SELECT
+  ticker,
+  period_end,
+  period_duration,
+  section,
+  'net_margin' AS ratio_name,
+  MAX(CASE
+    WHEN statement_type = 'profit_loss'
+      AND canonical_name = 'net_profit'
+    THEN value END) * 1.0
+  / NULLIF(MAX(CASE
+      WHEN statement_type = 'profit_loss'
+        AND canonical_name = 'total_income'
+      THEN value END), 0) AS value
+FROM financial_statements
+WHERE section IN ('consolidated', 'unconsolidated')
+  AND statement_type = 'profit_loss'
+  AND period_duration IN ('3M', '6M', '9M', '12M', 'LTM')
+  AND canonical_name IN ('net_profit', 'total_income')
+  AND ticker IN ('ABL', 'AKBL', 'BAFL', 'BAHL', 'BIPL', 'BOP', 'FABL', 'HBL', 'HMB', 'MCB', 'MEBL', 'NBP', 'SCBPL', 'UBL')
+GROUP BY ticker, period_end, section, period_duration
+HAVING
+  MAX(CASE
+    WHEN statement_type = 'profit_loss'
+      AND canonical_name = 'net_profit'
+    THEN value END) IS NOT NULL
+  AND
+  MAX(CASE
+    WHEN statement_type = 'profit_loss'
+      AND canonical_name = 'total_income'
+    THEN value END) IS NOT NULL
+  AND
+  NULLIF(MAX(CASE
+      WHEN statement_type = 'profit_loss'
+        AND canonical_name = 'total_income'
+      THEN value END), 0) IS NOT NULL;
+
 INSERT INTO ratios (ticker, period_end, period_duration, section, ratio_name, value)
 SELECT
   ticker,
